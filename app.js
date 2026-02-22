@@ -517,7 +517,7 @@ async function createPromptCluster() {
   const progressEl = document.getElementById('progress-text');
   progressEl.textContent = 'Creating cluster...';
   try {
-    const res = await window.electronAPI.embeddings.promptCluster(prompt, embeddings, emailIds, 0.5);
+    const res = await window.electronAPI.embeddings.promptCluster(prompt, embeddings, emailIds, 0.3);
     if (!res.ok) throw new Error(res.error || 'Failed');
     const slug = prompt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cluster';
     const clusters = getPromptClusters();

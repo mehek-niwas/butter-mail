@@ -84,7 +84,7 @@ function rrfMerge(denseResults, sparseResults, emails) {
  * Returns email IDs whose embedding similarity to the prompt meets the threshold.
  * Used for prompt-based clusters (no LLM).
  */
-async function emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshold = 0.5) {
+async function emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshold = 0.2) {
   if (!prompt || !embeddings || !emailIds || emailIds.length === 0) return [];
   const queryEmbedding = await embeddingsService.computeQueryEmbedding(prompt);
   const scored = emailIds
@@ -100,9 +100,11 @@ async function emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshol
       const sim = normA && normB ? dot / (Math.sqrt(normA) * Math.sqrt(normB)) : 0;
       return { id, sim };
     })
-    .filter((s) => s.sim >= threshold);
+    .filter((s) => s.sim > 0);
   scored.sort((a, b) => b.sim - a.sim);
-  return scored.map((s) => s.id);
+  const above = scored.filter((s) => s.sim >= threshold);
+  if (above.length > 0) return above.map((s) => s.id);
+  return scored.slice(0, 50).map((s) => s.id);
 }
 
 function attachSearchScores(email, rank, denseScore, sparseScore) {
