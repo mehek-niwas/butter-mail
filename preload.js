@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fetchThreadHeaders: (uids) => ipcRenderer.invoke('imap:fetchThreadHeaders', uids),
     test: (config) => ipcRenderer.invoke('imap:test', config)
   },
+  smtp: {
+    send: (opts) => ipcRenderer.invoke('smtp:send', opts)
+  },
   embeddings: {
     compute: (emails) => ipcRenderer.invoke('embeddings:compute', emails),
     query: (query) => ipcRenderer.invoke('embeddings:query', query),

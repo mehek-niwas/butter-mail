@@ -16,6 +16,14 @@ body {
   display: flex;
 }
 
+/* Body row: sidebar + main */
+.app-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
 /* Sidebar */
 .sidebar {
   width: 16rem;
@@ -56,7 +64,7 @@ body {
 }
 
 .nav-buttons {
-  margin-top: 1.5rem;
+  margin-top: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -102,11 +110,13 @@ body {
   min-width: 0;
   padding: 2rem;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .search-bar {
   max-width: 20rem;
-  margin: 0 auto 2rem;
+  margin: 0 auto 1.5rem;
   background-color: #E5C94A;
   border-radius: 9999px;
   padding: 0.5rem 1rem;
@@ -133,6 +143,100 @@ body {
 
 .search-input::placeholder {
   color: #6B5A2E;
+}
+
+.main-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  background-color: #C89BE6;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #4A3B1F;
+}
+
+.ai-badge-icon {
+  width: 14px;
+  height: 14px;
+  color: #4A3B1F;
+}
+
+/* List view: two columns — email list | email detail */
+.list-view-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  gap: 0;
+}
+
+.email-list-column {
+  width: 24rem;
+  min-width: 24rem;
+  flex-shrink: 0;
+  border-right: 1px solid #fde047;
+  background-color: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.email-list-column .email-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0.5rem;
+}
+
+.email-detail-column {
+  flex: 1;
+  min-width: 0;
+  background-color: #f9fafb;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.email-detail-inline {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.25rem;
+}
+
+.email-detail-inline-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+
+.email-detail-inline-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.email-detail-inline-content .email-detail-header {
+  flex-shrink: 0;
+}
+
+.email-detail-inline-content .email-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* Category cards */
@@ -242,6 +346,7 @@ body {
   flex-wrap: wrap;
 }
 
+.compose-btn,
 .refresh-btn {
   padding: 0.5rem 1rem;
   background-color: #E5C94A;
@@ -252,6 +357,7 @@ body {
   color: #4A3B1F;
 }
 
+.compose-btn:hover,
 .refresh-btn:hover {
   background-color: #EBD98E;
 }
@@ -302,6 +408,11 @@ body {
 .email-row:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   background-color: #EDE9DC;
+}
+
+.email-row.selected {
+  background-color: #fef08a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .email-row-category-square {
@@ -455,6 +566,21 @@ body {
   padding-left: 1.5rem;
 }
 
+.reply-inline-btn {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  background-color: #E5C94A;
+  border: none;
+  border-radius: 0.5rem;
+  color: #4A3B1F;
+  cursor: pointer;
+}
+
+.reply-inline-btn:hover {
+  background-color: #EBD98E;
+}
+
 /* Settings modal */
 .settings-panel {
   max-width: 24rem;
@@ -596,6 +722,38 @@ body {
   margin-top: 0.75rem;
   font-size: 0.75rem;
   min-height: 1.25rem;
+}
+
+/* Compose modal */
+.compose-panel {
+  max-width: 28rem;
+}
+
+.settings-form textarea {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid #EBD98E;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 8rem;
+}
+
+.compose-status {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  min-height: 1.25rem;
+  color: #6B5A2E;
+}
+
+.compose-status.error {
+  color: #b94a4a;
+}
+
+.compose-status.success {
+  color: #2d6b2d;
 }
 
 /* View tabs */
@@ -829,4 +987,8 @@ body {
 
 .view-panel {
   margin-top: 1rem;
+}
+
+#panel-list.view-panel {
+  margin-top: 0.75rem;
 }

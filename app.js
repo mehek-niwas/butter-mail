@@ -170,6 +170,7 @@ let currentFilter = 'all';
 let pcaPoints = getPcaPoints();
 let searchQuery = '';
 let searchResults = null;
+let selectedEmail = null;
 
 function getFilteredEmails() {
   let emails = searchResults !== null ? searchResults : getAllEmails();
@@ -757,9 +758,23 @@ function renderEmailList(emails) {
   listEl.querySelectorAll('.email-row').forEach((row) => {
     row.addEventListener('click', () => {
       const email = getAllEmails().find((x) => x.id === row.dataset.id);
-      if (email) openEmailDetail(email);
+      if (email) {
+        selectedEmail = email;
+        if (currentView === 'list') {
+          updateInlineDetail(email);
+          listEl.querySelectorAll('.email-row').forEach((r) => r.classList.remove('selected'));
+          row.classList.add('selected');
+        } else {
+          openEmailDetail(email);
+        }
+      }
     });
   });
+
+  if (selectedEmail) {
+    const selectedRow = listEl.querySelector('.email-row[data-id="' + escapeHtml(selectedEmail.id) + '"]');
+    if (selectedRow) selectedRow.classList.add('selected');
+  }
 }
 
 function escapeHtml(str) {
@@ -801,7 +816,44 @@ function renderEmailBody(body, bodyIsHtml) {
   return DOMPurify.sanitize(linkify(body), SANITIZE_OPTS);
 }
 
+function setInlineDetailContent(email, body, bodyIsHtml) {
+  document.getElementById('email-detail-inline-subject').textContent = email.subject;
+  document.getElementById('email-detail-inline-from').textContent = email.from || email.fromEmail || '';
+  document.getElementById('email-detail-inline-to').textContent = email.toDisplay || email.to || '';
+  document.getElementById('email-detail-inline-date').textContent = email.date ? new Date(email.date).toLocaleString() : '';
+  document.getElementById('email-detail-inline-body').innerHTML = renderEmailBody(body || '', bodyIsHtml);
+  document.getElementById('email-detail-inline-placeholder').classList.add('hidden');
+  document.getElementById('email-detail-inline-content').classList.remove('hidden');
+}
+
+function clearInlineDetail() {
+  document.getElementById('email-detail-inline-placeholder').classList.remove('hidden');
+  document.getElementById('email-detail-inline-content').classList.add('hidden');
+}
+
+async function updateInlineDetail(email) {
+  let body = email.body;
+  let bodyIsHtml = email.bodyIsHtml || false;
+  setInlineDetailContent(email, body, bodyIsHtml);
+  if (!body && email.id && email.id.startsWith('imap-') && email.uid && typeof window.electronAPI !== 'undefined') {
+    document.getElementById('email-detail-inline-body').textContent = 'Loading...';
+    const result = await window.electronAPI.imap.fetchOne(email.uid);
+    if (result.ok && result.email) {
+      body = result.email.body;
+      bodyIsHtml = result.email.bodyIsHtml || false;
+      if (result.email.toDisplay) email.toDisplay = result.email.toDisplay;
+    }
+    setInlineDetailContent(email, body, bodyIsHtml);
+  }
+}
+
 async function openEmailDetail(email) {
+  if (currentView === 'list') {
+    selectedEmail = email;
+    await updateInlineDetail(email);
+    renderEmailList(getFilteredEmails());
+    return;
+  }
   document.getElementById('email-detail-subject').textContent = email.subject;
   document.getElementById('email-detail-from').textContent = email.from || email.fromEmail || '';
   document.getElementById('email-detail-to').textContent = email.toDisplay || email.to || '';
@@ -861,16 +913,20 @@ document.querySelector('.search-input').addEventListener('input', (e) => {
 
 // --- View tabs ---
 document.querySelectorAll('.view-tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.view-tab').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentView = btn.dataset.view;
-    document.getElementById('panel-list').classList.toggle('hidden', currentView !== 'list');
-    document.getElementById('panel-graph').classList.toggle('hidden', currentView !== 'graph');
-    document.getElementById('panel-timeline').classList.toggle('hidden', currentView !== 'timeline');
-    refreshCurrentView();
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-tab').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentView = btn.dataset.view;
+      document.getElementById('panel-list').classList.toggle('hidden', currentView !== 'list');
+      document.getElementById('panel-graph').classList.toggle('hidden', currentView !== 'graph');
+      document.getElementById('panel-timeline').classList.toggle('hidden', currentView !== 'timeline');
+      if (currentView !== 'list') {
+        selectedEmail = null;
+        clearInlineDetail();
+      }
+      refreshCurrentView();
+    });
   });
-});
 
 // --- Settings ---
 const settingsOverlay = document.getElementById('settings-overlay');
@@ -930,6 +986,71 @@ settingsForm.addEventListener('submit', async (e) => {
   };
   await window.electronAPI.imap.saveConfig(config);
   document.getElementById('settings-status').textContent = 'Saved. Click Refresh to fetch emails.';
+});
+
+// --- Compose / Send ---
+const composeOverlay = document.getElementById('compose-overlay');
+const composeForm = document.getElementById('compose-form');
+const composeStatus = document.getElementById('compose-status');
+
+function openCompose(opts = {}) {
+  document.getElementById('compose-to').value = opts.to || '';
+  document.getElementById('compose-subject').value = opts.subject || '';
+  document.getElementById('compose-body').value = opts.body || '';
+  composeStatus.textContent = '';
+  composeStatus.className = 'compose-status';
+  composeOverlay.classList.remove('hidden');
+}
+
+function closeCompose() {
+  composeOverlay.classList.add('hidden');
+}
+
+document.getElementById('compose-btn').addEventListener('click', () => {
+  if (typeof window.electronAPI === 'undefined') {
+    alert('Sending is available in the Electron app. Run: npm start');
+    return;
+  }
+  openCompose();
+});
+
+document.getElementById('compose-close').addEventListener('click', closeCompose);
+document.getElementById('compose-cancel').addEventListener('click', closeCompose);
+
+composeOverlay.addEventListener('click', (e) => {
+  if (e.target === composeOverlay) closeCompose();
+});
+
+document.getElementById('reply-inline-btn').addEventListener('click', () => {
+  if (typeof window.electronAPI === 'undefined') {
+    alert('Sending is available in the Electron app. Run: npm start');
+    return;
+  }
+  const email = selectedEmail;
+  if (!email) return;
+  const replyTo = email.fromEmail || (email.from && email.from.match(/<([^>]+)>/) ? email.from.match(/<([^>]+)>/)[1] : email.from) || email.from || '';
+  const replySubject = (email.subject || '').trim().replace(/^Re:\s*/i, '') ? 'Re: ' + (email.subject || '').trim() : 'Re: (no subject)';
+  openCompose({ to: replyTo, subject: replySubject, body: '' });
+});
+
+composeForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (typeof window.electronAPI === 'undefined') return;
+  const to = document.getElementById('compose-to').value.trim();
+  const subject = document.getElementById('compose-subject').value.trim();
+  const body = document.getElementById('compose-body').value.trim();
+  composeStatus.textContent = 'Sending...';
+  composeStatus.className = 'compose-status';
+  const result = await window.electronAPI.smtp.send({ to, subject, text: body });
+  if (result.ok) {
+    composeStatus.textContent = 'Sent.';
+    composeStatus.className = 'compose-status success';
+    composeForm.reset();
+    setTimeout(closeCompose, 1200);
+  } else {
+    composeStatus.textContent = result.error || 'Send failed.';
+    composeStatus.className = 'compose-status error';
+  }
 });
 
 // --- Initial load ---

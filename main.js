@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
+const nodemailer = require('nodemailer');
 const embeddingsService = require('./embeddings-service');
 const pcaUtils = require('./pca-utils');
 const clustering = require('./clustering');
@@ -21,6 +22,26 @@ function loadConfig() {
 
 function saveConfig(config) {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+}
+
+function getSmtpOptions(config) {
+  if (!config || !config.user || !config.pass) return null;
+  let host = config.smtpHost;
+  let port = config.smtpPort;
+  if (!host && config.host) {
+    if (config.host.includes('gmail.com')) {
+      host = 'smtp.gmail.com';
+      port = port || 587;
+    } else if (config.host.includes('office365.com') || config.host.includes('outlook.')) {
+      host = 'smtp.office365.com';
+      port = port || 587;
+    } else {
+      host = config.host.replace(/^imap\./i, 'smtp.');
+      port = port || 587;
+    }
+  }
+  if (!port) port = 587;
+  return { host, port, user: config.user, pass: config.pass };
 }
 
 async function parseEmlFromSource(buffer) {
@@ -317,6 +338,38 @@ ipcMain.handle('embeddings:promptClusterScored', async (_, prompt, embeddings, e
     return { ok: true, scored };
   } catch (err) {
     return { ok: false, error: err.message || String(err), scored: [] };
+  }
+});
+
+ipcMain.handle('smtp:send', async (_, { to, subject, text, html, replyToMessageId }) => {
+  const config = loadConfig();
+  const smtpOpts = getSmtpOptions(config);
+  if (!smtpOpts) {
+    return { ok: false, error: 'SMTP not configured. Set IMAP settings (same account is used for sending).' };
+  }
+  if (!to || !to.trim()) {
+    return { ok: false, error: 'Recipient (To) is required.' };
+  }
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpOpts.host,
+      port: smtpOpts.port,
+      secure: smtpOpts.port === 465,
+      auth: { user: smtpOpts.user, pass: smtpOpts.pass }
+    });
+    const mailOptions = {
+      from: smtpOpts.user,
+      to: to.trim(),
+      subject: (subject || '').trim() || '(no subject)',
+      text: (text || '').trim() || '',
+      html: (html || '').trim() || undefined
+    };
+    if (replyToMessageId) mailOptions.references = replyToMessageId;
+    if (replyToMessageId) mailOptions.inReplyTo = replyToMessageId;
+    await transporter.sendMail(mailOptions);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
   }
 });
 

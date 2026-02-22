@@ -11,140 +11,185 @@
   </head>
   <body>
     <div class="app">
-      <!-- Sidebar -->
-      <aside class="sidebar">
-        <h1 class="logo"><img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="logo-img" /><img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden /><span class="logo-text">butter mail</span></h1>
+      <!-- Content row: Sidebar | Main -->
+      <div class="app-body">
+        <aside class="sidebar">
+          <h1 class="logo">
+            <img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="logo-img" />
+            <img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden />
+            <span class="logo-text">butter mail</span>
+          </h1>
+          <p class="welcome">welcome to your spread, mehek!</p>
+          <nav class="nav-buttons">
+            <button type="button" class="nav-btn active" data-tab="views">views</button>
+            <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">&#9881;</button>
+          </nav>
+        </aside>
 
-        <p class="welcome">welcome to your spread, mehek!</p>
-
-        <nav class="nav-buttons">
-          <button type="button" class="nav-btn active" data-tab="views">views</button>
-          <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">&#9881;</button>
-        </nav>
-      </aside>
-
-      <!-- Main Content -->
-      <main class="main">
-        <!-- Search Bar -->
-        <div class="search-bar">
-          <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" class="search-input" placeholder="search" />
-        </div>
-
-        <!-- View tabs: List | Graph | Timeline -->
-        <div class="view-tabs" id="view-tabs">
-          <button type="button" class="view-tab active" data-view="list">List</button>
-          <button type="button" class="view-tab" data-view="graph">Graph</button>
-          <button type="button" class="view-tab" data-view="timeline">Timeline</button>
-        </div>
-
-        <!-- Category subtabs (all | category 1 | category 2 | ...) -->
-        <div class="subtab-bar" id="subtab-bar">
-          <button type="button" class="subtab-btn active" data-subtab="all">all</button>
-        </div>
-
-        <!-- Import + Compute embeddings + Create cluster -->
-        <div class="import-section" id="import-section">
-          <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">&#8635; refresh</button>
-          <label class="import-btn">
-            <input type="file" id="email-import" accept=".eml,.mbox,.txt" multiple hidden />
-            import .eml / .mbox
-          </label>
-          <button type="button" class="compute-embeddings-btn" id="compute-embeddings-btn" title="Compute embeddings, PCA and categories">compute embeddings</button>
-          <div class="prompt-cluster-row">
-            <input type="text" id="prompt-cluster-input" class="prompt-cluster-input" placeholder="Create cluster from prompt (e.g. application)" />
-            <button type="button" class="prompt-cluster-btn" id="prompt-cluster-btn" title="Create a cluster of emails matching this prompt">create cluster</button>
+        <main class="main">
+          <!-- Search bar -->
+          <div class="search-bar">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" class="search-input" placeholder="search" />
           </div>
-          <span class="progress-text" id="progress-text"></span>
-        </div>
+          <!-- View tabs: List | Graph | Timeline -->
+          <div class="view-tabs" id="view-tabs">
+            <button type="button" class="view-tab active" data-view="list">List</button>
+            <button type="button" class="view-tab" data-view="graph">Graph</button>
+            <button type="button" class="view-tab" data-view="timeline">Timeline</button>
+          </div>
 
-        <!-- List view -->
-        <div class="content-panel view-panel" id="panel-list">
-          <div class="email-list" id="email-list"></div>
-        </div>
+          <!-- Category subtabs (all | category 1 | category 2 | ...) -->
+          <div class="subtab-bar" id="subtab-bar">
+            <button type="button" class="subtab-btn active" data-subtab="all">all</button>
+          </div>
 
-        <!-- Graph view (3D) -->
-        <div class="content-panel view-panel hidden" id="panel-graph">
-          <div class="graph-container" id="graph-container">
-            <canvas id="graph-canvas"></canvas>
-            <div class="graph-axis-legend">
-              <span class="graph-axis-label graph-axis-x">X</span>
-              <span class="graph-axis-label graph-axis-y">Y</span>
-              <span class="graph-axis-label graph-axis-z">Z</span>
+          <!-- Import + Compose + Compute embeddings + Create cluster -->
+          <div class="import-section" id="import-section">
+            <button type="button" class="compose-btn" id="compose-btn" title="New email">&#9993; compose</button>
+            <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">&#8635; refresh</button>
+            <label class="import-btn">
+              <input type="file" id="email-import" accept=".eml,.mbox,.txt" multiple hidden />
+              import .eml / .mbox
+            </label>
+            <button type="button" class="compute-embeddings-btn" id="compute-embeddings-btn" title="Compute embeddings, PCA and categories">compute embeddings</button>
+            <div class="prompt-cluster-row">
+              <input type="text" id="prompt-cluster-input" class="prompt-cluster-input" placeholder="Create cluster from prompt (e.g. application)" />
+              <button type="button" class="prompt-cluster-btn" id="prompt-cluster-btn" title="Create a cluster of emails matching this prompt">create cluster</button>
             </div>
-            <div class="graph-coords-legend" id="graph-coords">X: — Y: — Z: —</div>
-            <div class="graph-tooltip hidden" id="graph-tooltip"></div>
+            <span class="progress-text" id="progress-text"></span>
           </div>
-        </div>
 
-        <!-- Timeline view (card stacks) -->
-        <div class="content-panel view-panel hidden" id="panel-timeline">
-          <div class="timeline-stacks" id="timeline-stacks"></div>
-        </div>
+          <!-- List view: email list + inline email detail -->
+          <div class="content-panel view-panel list-view-layout" id="panel-list">
+            <div class="email-list-column">
+              <div class="email-list" id="email-list"></div>
+            </div>
+            <div class="email-detail-column">
+              <div class="email-detail-inline" id="email-detail-inline">
+                <div class="email-detail-inline-placeholder" id="email-detail-inline-placeholder">
+                  Select an email
+                </div>
+                <div class="email-detail-inline-content hidden" id="email-detail-inline-content">
+                  <div class="email-detail-header">
+                    <h2 class="email-detail-subject" id="email-detail-inline-subject"></h2>
+                    <div class="email-detail-meta-block">
+                      <div class="email-detail-meta-row"><span class="email-detail-meta-label">From</span><span id="email-detail-inline-from"></span></div>
+                      <div class="email-detail-meta-row"><span class="email-detail-meta-label">To</span><span id="email-detail-inline-to"></span></div>
+                      <div class="email-detail-meta-row"><span class="email-detail-meta-label">Date</span><span id="email-detail-inline-date"></span></div>
+                    </div>
+                    <button type="button" class="reply-inline-btn" id="reply-inline-btn" title="Reply">&#9993; Reply</button>
+                  </div>
+                  <div class="email-detail-body" id="email-detail-inline-body"></div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        <!-- Settings modal -->
-        <div class="email-detail-overlay hidden" id="settings-overlay">
-          <div class="email-detail-panel settings-panel">
-            <button type="button" class="email-detail-close" id="settings-close">&#215;</button>
-            <h2 class="settings-title">IMAP settings</h2>
-            <p class="settings-hint">Gmail: imap.gmail.com:993 (use App Password). Outlook: outlook.office365.com:993</p>
-            <form class="settings-form" id="settings-form">
-              <label>Host</label>
-              <input type="text" name="host" placeholder="imap.gmail.com" required />
-              <label>Port</label>
-              <input type="number" name="port" placeholder="993" value="993" />
-              <label>Email</label>
-              <input type="email" name="user" placeholder="you@gmail.com" required />
-              <label>Password / App Password</label>
-              <input type="password" name="pass" placeholder="&#149;&#149;&#149;&#149;&#149;&#149;&#149;&#149;" required />
+          <!-- Graph view (3D) -->
+          <div class="content-panel view-panel hidden" id="panel-graph">
+            <div class="graph-container" id="graph-container">
+              <canvas id="graph-canvas"></canvas>
+              <div class="graph-axis-legend">
+                <span class="graph-axis-label graph-axis-x">X</span>
+                <span class="graph-axis-label graph-axis-y">Y</span>
+                <span class="graph-axis-label graph-axis-z">Z</span>
+              </div>
+              <div class="graph-coords-legend" id="graph-coords">X: — Y: — Z: —</div>
+              <div class="graph-tooltip hidden" id="graph-tooltip"></div>
+            </div>
+          </div>
+
+          <!-- Timeline view (card stacks) -->
+          <div class="content-panel view-panel hidden" id="panel-timeline">
+            <div class="timeline-stacks" id="timeline-stacks"></div>
+          </div>
+
+          <!-- Settings modal -->
+          <div class="email-detail-overlay hidden" id="settings-overlay">
+            <div class="email-detail-panel settings-panel">
+              <button type="button" class="email-detail-close" id="settings-close">&#215;</button>
+              <h2 class="settings-title">IMAP settings</h2>
+              <p class="settings-hint">Gmail: imap.gmail.com:993 (use App Password). Outlook: outlook.office365.com:993</p>
+              <form class="settings-form" id="settings-form">
+                <label>Host</label>
+                <input type="text" name="host" placeholder="imap.gmail.com" required />
+                <label>Port</label>
+                <input type="number" name="port" placeholder="993" value="993" />
+                <label>Email</label>
+                <input type="email" name="user" placeholder="you@gmail.com" required />
+                <label>Password / App Password</label>
+                <input type="password" name="pass" placeholder="&#149;&#149;&#149;&#149;&#149;&#149;&#149;&#149;" required />
+                <div class="settings-actions">
+                  <button type="button" class="settings-test" id="settings-test">test connection</button>
+                  <button type="submit" class="settings-save">save</button>
+                </div>
+              </form>
+              <p class="settings-status" id="settings-status"></p>
+            </div>
+          </div>
+
+          <!-- Create cluster modal (view results, then set threshold) -->
+          <div class="email-detail-overlay hidden" id="cluster-threshold-overlay">
+            <div class="email-detail-panel settings-panel cluster-threshold-panel">
+              <button type="button" class="email-detail-close" id="cluster-threshold-close">&#215;</button>
+              <h2 class="settings-title" id="cluster-threshold-title">Create cluster</h2>
+              <p class="settings-hint" id="cluster-threshold-hint">Matched results (by similarity). Green = in cluster, red = out. Click a row to include or exclude it. Set threshold below to change the default cutoff.</p>
+              <div class="cluster-results-list" id="cluster-threshold-results"></div>
+              <div class="cluster-threshold-row">
+                <label for="cluster-threshold-slider">Threshold</label>
+                <input type="range" id="cluster-threshold-slider" min="0" max="1" step="0.05" value="0.3" />
+                <span class="cluster-threshold-value" id="cluster-threshold-value">0.30</span>
+              </div>
+              <p class="cluster-threshold-count" id="cluster-threshold-count">0 emails in cluster</p>
               <div class="settings-actions">
-                <button type="button" class="settings-test" id="settings-test">test connection</button>
-                <button type="submit" class="settings-save">save</button>
-              </div>
-            </form>
-            <p class="settings-status" id="settings-status"></p>
-          </div>
-        </div>
-
-        <!-- Create cluster modal (view results, then set threshold) -->
-        <div class="email-detail-overlay hidden" id="cluster-threshold-overlay">
-          <div class="email-detail-panel settings-panel cluster-threshold-panel">
-            <button type="button" class="email-detail-close" id="cluster-threshold-close">&#215;</button>
-            <h2 class="settings-title" id="cluster-threshold-title">Create cluster</h2>
-            <p class="settings-hint" id="cluster-threshold-hint">Matched results (by similarity). Green = in cluster, red = out. Click a row to include or exclude it. Set threshold below to change the default cutoff.</p>
-            <div class="cluster-results-list" id="cluster-threshold-results"></div>
-            <div class="cluster-threshold-row">
-              <label for="cluster-threshold-slider">Threshold</label>
-              <input type="range" id="cluster-threshold-slider" min="0" max="1" step="0.05" value="0.3" />
-              <span class="cluster-threshold-value" id="cluster-threshold-value">0.30</span>
-            </div>
-            <p class="cluster-threshold-count" id="cluster-threshold-count">0 emails in cluster</p>
-            <div class="settings-actions">
-              <button type="button" class="settings-save" id="cluster-threshold-create">Create cluster</button>
-              <button type="button" class="subtab-btn" id="cluster-threshold-cancel">Cancel</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Email detail view (modal) -->
-        <div class="email-detail-overlay hidden" id="email-detail">
-          <div class="email-detail-panel">
-            <button type="button" class="email-detail-close" id="email-detail-close">&#215;</button>
-            <div class="email-detail-header">
-              <h2 class="email-detail-subject" id="email-detail-subject"></h2>
-              <div class="email-detail-meta-block">
-                <div class="email-detail-meta-row"><span class="email-detail-meta-label">From</span><span id="email-detail-from"></span></div>
-                <div class="email-detail-meta-row"><span class="email-detail-meta-label">To</span><span id="email-detail-to"></span></div>
-                <div class="email-detail-meta-row"><span class="email-detail-meta-label">Date</span><span id="email-detail-date"></span></div>
+                <button type="button" class="settings-save" id="cluster-threshold-create">Create cluster</button>
+                <button type="button" class="subtab-btn" id="cluster-threshold-cancel">Cancel</button>
               </div>
             </div>
-            <div class="email-detail-body" id="email-detail-body"></div>
           </div>
-        </div>
-      </main>
+
+          <!-- Compose modal -->
+          <div class="email-detail-overlay hidden" id="compose-overlay">
+            <div class="email-detail-panel settings-panel compose-panel">
+              <button type="button" class="email-detail-close" id="compose-close">&#215;</button>
+              <h2 class="settings-title">New email</h2>
+              <form class="settings-form" id="compose-form">
+                <label for="compose-to">To</label>
+                <input type="text" id="compose-to" name="to" placeholder="recipient@example.com" required />
+                <label for="compose-subject">Subject</label>
+                <input type="text" id="compose-subject" name="subject" placeholder="Subject" />
+                <label for="compose-body">Message</label>
+                <textarea id="compose-body" name="body" rows="10" placeholder="Write your message..."></textarea>
+                <p class="compose-status" id="compose-status"></p>
+                <div class="settings-actions">
+                  <button type="button" class="subtab-btn" id="compose-cancel">Cancel</button>
+                  <button type="submit" class="settings-save" id="compose-send">Send</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Email detail modal (used for Graph / Timeline click) -->
+          <div class="email-detail-overlay hidden" id="email-detail">
+            <div class="email-detail-panel">
+              <button type="button" class="email-detail-close" id="email-detail-close">&#215;</button>
+              <div class="email-detail-header">
+                <h2 class="email-detail-subject" id="email-detail-subject"></h2>
+                <div class="email-detail-meta-block">
+                  <div class="email-detail-meta-row"><span class="email-detail-meta-label">From</span><span id="email-detail-from"></span></div>
+                  <div class="email-detail-meta-row"><span class="email-detail-meta-label">To</span><span id="email-detail-to"></span></div>
+                  <div class="email-detail-meta-row"><span class="email-detail-meta-label">Date</span><span id="email-detail-date"></span></div>
+                </div>
+              </div>
+              <div class="email-detail-body" id="email-detail-body"></div>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
