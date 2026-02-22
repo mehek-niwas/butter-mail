@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Butter Mail — Welcome to your spread</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --cream: #E7D8A5;
+        --butter: #E5C94A;
+        --butter-light: #EBD98E;
+        --brown: #4A3B1F;
+        --brown-muted: #6B5A2E;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'DM Sans', system-ui, sans-serif;
+        min-height: 100vh;
+        background: var(--cream);
+        color: var(--brown);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow-x: hidden;
+      }
+
+      /* Subtle grain overlay */
+      .page {
+        position: relative;
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+
+      .page::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+        pointer-events: none;
+      }
+
+      .hero {
+        position: relative;
+        text-align: center;
+        max-width: 32rem;
+      }
+
+      /* Logo block */
+      .logo-block {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+        animation: fadeInDown 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      .logo-block img {
+        height: 3.5rem;
+        width: auto;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      .logo-block .logo-text {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--brown);
+        letter-spacing: 0.02em;
+      }
+
+      .welcome {
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: var(--brown-muted);
+        margin-bottom: 2.5rem;
+        animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+      }
+
+      /* Animated tagline strip */
+      .tagline-wrap {
+        position: relative;
+        min-height: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
+      }
+
+      .tagline-inner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        padding: 0.75rem 1.25rem;
+        background: var(--butter-light);
+        border-radius: 9999px;
+        box-shadow: 0 4px 24px rgba(74, 59, 31, 0.08);
+      }
+
+      .tagline-static {
+        font-size: 0.95rem;
+        color: var(--brown);
+        font-weight: 500;
+      }
+
+      .tagline-rotating {
+        position: relative;
+        min-width: 22ch;
+        height: 1.5em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .tagline-rotating span {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-weight: 600;
+        color: var(--brown);
+      }
+
+      /* CTA link to app */
+      .cta-wrap {
+        margin-top: 2.5rem;
+        animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both;
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        background: var(--butter);
+        color: var(--brown);
+        font-weight: 600;
+        font-size: 0.95rem;
+        text-decoration: none;
+        border-radius: 9999px;
+        box-shadow: 0 4px 20px rgba(229, 201, 74, 0.4);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .cta:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(229, 201, 74, 0.5);
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes fadeInDown {
+        from {
+          opacity: 0;
+          transform: translateY(-16px);
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      /* Fallback when images fail */
+      .logo-block .logo-fallback {
+        display: none;
+        font-size: 2rem;
+      }
+
+      .logo-block:has(.logo-img[data-loaded="false"]) .logo-fallback {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="hero">
+        <div class="logo-block">
+          <img src="assets/butter-mail-logo.webp" alt="" class="logo-img" aria-hidden />
+          <img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden />
+          <span class="logo-text">butter mail</span>
+        </div>
+
+        <p class="welcome">Welcome to your spread.</p>
+
+        <div class="tagline-wrap">
+          <div class="tagline-inner">
+            <span class="tagline-static">Try Butter Mail —</span>
+            <span class="tagline-rotating" aria-live="polite">
+              <span>the better mail.</span>
+              <span>smart search, AI clusters.</span>
+              <span>your data stays local.</span>
+              <span>list, graph & timeline views.</span>
+              <span>embeddings that make sense.</span>
+              <span>the better mail.</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="cta-wrap">
+          <a href="index.html" class="cta">Open Butter Mail →</a>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var rotating = document.querySelector('.tagline-rotating');
+        if (!rotating) return;
+        var spans = rotating.querySelectorAll('span');
+        if (spans.length < 2) return;
+
+        var duration = 3200;
+        var total = spans.length;
+        var current = 0;
+        var centerX = 'translateX(-50%)';
+
+        function showNext() {
+          spans[current].style.opacity = '0';
+          spans[current].style.transform = centerX + ' translateY(-6px)';
+          current = (current + 1) % total;
+          spans[current].style.opacity = '1';
+          spans[current].style.transform = centerX + ' translateY(0)';
+        }
+
+        spans.forEach(function (s, i) {
+          s.style.transition = 'opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)';
+          s.style.opacity = i === 0 ? '1' : '0';
+          s.style.transform = i === 0 ? centerX + ' translateY(0)' : centerX + ' translateY(6px)';
+        });
+
+        setInterval(showNext, duration);
+      })();
+    </script>
+  </body>
+</html>
