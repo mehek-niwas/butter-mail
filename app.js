@@ -281,20 +281,39 @@ function updateSubtabBar() {
     const meta = cats.meta[cid];
     const name = meta && meta.name ? meta.name : cid;
     const isActive = activeTab === cid;
-    html += '<button type="button" class="subtab-btn' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(cid) + '" data-category-id="' + escapeHtml(cid) + '">' + escapeHtml(name) + '</button>';
+    html += '<span class="subtab-wrap">' +
+      '<button type="button" class="subtab-btn' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(cid) + '" data-category-id="' + escapeHtml(cid) + '">' + escapeHtml(name) + '</button>' +
+      '<button type="button" class="subtab-delete" data-delete-category="' + escapeHtml(cid) + '" title="Delete category" aria-label="Delete category">&#215;</button>' +
+      '</span>';
   });
   promptSlugs.forEach((slug) => {
     const cluster = promptClusters[slug];
     const label = cluster && cluster.label ? cluster.label : slug;
     const tabId = 'prompt-' + slug;
     const isActive = activeTab === tabId;
-    html += '<button type="button" class="subtab-btn subtab-prompt' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(tabId) + '">' + escapeHtml(label) + '</button>';
+    html += '<span class="subtab-wrap">' +
+      '<button type="button" class="subtab-btn subtab-prompt' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(tabId) + '">' + escapeHtml(label) + '</button>' +
+      '<button type="button" class="subtab-delete" data-delete-prompt="' + escapeHtml(slug) + '" title="Delete cluster" aria-label="Delete cluster">&#215;</button>' +
+      '</span>';
   });
   bar.innerHTML = html;
 
   ids.forEach((cid) => {
     const btn = bar.querySelector('[data-subtab="' + cid + '"]');
     if (btn) btn.addEventListener('dblclick', () => renameCategory(cid, btn));
+  });
+
+  bar.querySelectorAll('.subtab-delete[data-delete-category]').forEach((delBtn) => {
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteCategory(delBtn.dataset.deleteCategory);
+    });
+  });
+  bar.querySelectorAll('.subtab-delete[data-delete-prompt]').forEach((delBtn) => {
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deletePromptCluster(delBtn.dataset.deletePrompt);
+    });
   });
 
   bar.querySelectorAll('.subtab-btn').forEach((b) => {
@@ -316,6 +335,34 @@ function renameCategory(catId, btnEl) {
     saveCategories(cats);
     btnEl.textContent = name.trim();
   }
+}
+
+function deleteCategory(catId) {
+  const cats = getCategories();
+  if (!cats.meta[catId]) return;
+  const name = cats.meta[catId].name || catId;
+  if (!confirm('Delete category "' + name + '"? Emails will move to Uncategorized.')) return;
+  delete cats.meta[catId];
+  Object.keys(cats.assignments).forEach((emailId) => {
+    if (cats.assignments[emailId] === catId) cats.assignments[emailId] = 'noise';
+  });
+  if (!cats.meta['noise']) cats.meta['noise'] = { name: 'Uncategorized', color: '#999' };
+  saveCategories(cats);
+  if (currentFilter === catId) currentFilter = 'all';
+  updateSubtabBar();
+  refreshCurrentView();
+}
+
+function deletePromptCluster(slug) {
+  const clusters = getPromptClusters();
+  if (!clusters[slug]) return;
+  const label = clusters[slug].label || slug;
+  if (!confirm('Delete cluster "' + label + '"?')) return;
+  delete clusters[slug];
+  savePromptClusters(clusters);
+  if (currentFilter === 'prompt-' + slug) currentFilter = 'all';
+  updateSubtabBar();
+  refreshCurrentView();
 }
 
 // --- View switching ---
@@ -432,7 +479,7 @@ async function fetchFromImap() {
   btn.classList.add('loading');
   btn.disabled = true;
   try {
-    const result = await window.electronAPI.imap.fetch(650);
+    const result = await window.electronAPI.imap.fetch(800);
     if (result.ok) {
       imapEmails = result.emails;
       timelineHeadersLoaded = false;
@@ -499,11 +546,14 @@ function renderEmailList(emails) {
   const listEl = document.getElementById('email-list');
   if (!listEl) return;
 
-  const sorted = [...emails].sort((a, b) => {
-    const da = new Date(a.date || 0);
-    const db = new Date(b.date || 0);
-    return db - da;
-  });
+  const isSearchMode = emails.length > 0 && typeof emails[0].searchRank === 'number';
+  const sorted = isSearchMode
+    ? [...emails].sort((a, b) => (a.searchRank || 0) - (b.searchRank || 0))
+    : [...emails].sort((a, b) => {
+        const da = new Date(a.date || 0);
+        const db = new Date(b.date || 0);
+        return db - da;
+      });
 
   if (sorted.length === 0) {
     const hint = typeof window.electronAPI !== 'undefined'
@@ -520,8 +570,16 @@ function renderEmailList(emails) {
       const fromStr = e.from || e.fromEmail || 'Unknown';
       const catColor = e.categoryId && cats.meta[e.categoryId] ? cats.meta[e.categoryId].color : '#E5C94A';
       const catTitle = e.categoryId && cats.meta[e.categoryId] ? (cats.meta[e.categoryId].name || '') : '';
-      return '<div class="email-row" data-id="' + escapeHtml(e.id) + '">' +
+      const rankHtml = isSearchMode
+        ? '<span class="email-row-rank">#' + String(e.searchRank) + '</span>' +
+          '<span class="email-row-scores">' +
+          'dense: ' + (e.denseScore != null ? Number(e.denseScore).toFixed(2) : '—') + ' | ' +
+          'sparse: ' + (e.sparseScore != null ? Number(e.sparseScore).toFixed(2) : '—') +
+          '</span>'
+        : '';
+      return '<div class="email-row' + (isSearchMode ? ' email-row-search' : '') + '" data-id="' + escapeHtml(e.id) + '">' +
         '<span class="email-row-category-square" style="background-color:' + escapeHtml(catColor) + '" title="' + escapeHtml(catTitle) + '" aria-hidden></span>' +
+        (isSearchMode ? rankHtml : '') +
         '<span class="email-row-subject">' + escapeHtml(e.subject) + '</span>' +
         '<span class="email-row-from">' + escapeHtml(fromStr) + '</span>' +
         '<span class="email-row-date">' + escapeHtml(formatDate(e.date)) + '</span>' +

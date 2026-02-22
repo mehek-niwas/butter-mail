@@ -64,9 +64,9 @@ function rrfMerge(denseResults, sparseResults, emails) {
   const denseByIdx = {};
   emails.forEach((e, i) => { denseByIdx[e.id] = i; });
   const sparseByIdx = {};
-  sparseResults.forEach(([idx], rank) => {
-    const id = emails[idx].id;
-    sparseByIdx[id] = rank;
+  sparseResults.forEach(([idx, score], rank) => {
+    const id = emails[idx] && emails[idx].id;
+    if (id) sparseByIdx[id] = rank;
   });
   const scores = {};
   denseResults.forEach((r, rank) => {
@@ -105,6 +105,15 @@ async function emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshol
   return scored.map((s) => s.id);
 }
 
+function attachSearchScores(email, rank, denseScore, sparseScore) {
+  return {
+    ...email,
+    searchRank: rank,
+    denseScore: denseScore != null ? denseScore : null,
+    sparseScore: sparseScore != null ? sparseScore : null
+  };
+}
+
 async function hybridSearch(query, emails, embeddings) {
   if (!query || !emails || emails.length === 0) {
     return emails;
@@ -113,38 +122,65 @@ async function hybridSearch(query, emails, embeddings) {
   const sparseResults = sparseSearch(query, 30);
   const limit = 30;
 
+  const denseById = {};
+  const sparseScoreById = {};
+  sparseResults.forEach((entry, rank) => {
+    const idx = Array.isArray(entry) ? entry[0] : entry;
+    const score = Array.isArray(entry) && entry.length > 1 ? entry[1] : null;
+    const email = emails[idx];
+    if (email) sparseScoreById[email.id] = score;
+  });
+
   let denseResults = [];
   if (embeddings && Object.keys(embeddings).length > 0) {
     try {
       const queryEmbedding = await embeddingsService.computeQueryEmbedding(query);
       const emailIds = emails.map((e) => e.id);
       denseResults = denseSearch(queryEmbedding, embeddings, emailIds, limit);
+      denseResults.forEach((r) => { denseById[r.id] = r.sim; });
     } catch (_) {}
   }
 
+  const byId = {};
+  emails.forEach((e) => { byId[e.id] = e; });
+
   if (denseResults.length === 0 && sparseResults.length === 0) {
     const q = query.toLowerCase();
-    return emails.filter(
+    const filtered = emails.filter(
       (e) =>
         (e.subject && e.subject.toLowerCase().includes(q)) ||
         (e.body && e.body.toLowerCase().includes(q))
     );
+    return filtered.map((e, i) => attachSearchScores(e, i + 1, null, null));
   }
   if (denseResults.length === 0) {
-    const byId = {};
-    emails.forEach((e) => { byId[e.id] = e; });
-    return sparseResults.map(([idx]) => emails[idx]).filter(Boolean);
+    return sparseResults
+      .map((entry, rank) => {
+        const idx = Array.isArray(entry) ? entry[0] : entry;
+        const score = Array.isArray(entry) && entry.length > 1 ? entry[1] : null;
+        const email = emails[idx];
+        return email ? attachSearchScores(email, rank + 1, null, score) : null;
+      })
+      .filter(Boolean);
   }
   if (sparseResults.length === 0) {
-    const byId = {};
-    emails.forEach((e) => { byId[e.id] = e; });
-    return denseResults.map((r) => byId[r.id]).filter(Boolean);
+    return denseResults
+      .map((r, rank) => {
+        const email = byId[r.id];
+        return email ? attachSearchScores(email, rank + 1, r.sim, null) : null;
+      })
+      .filter(Boolean);
   }
 
   const mergedIds = rrfMerge(denseResults, sparseResults, emails);
-  const byId = {};
-  emails.forEach((e) => { byId[e.id] = e; });
-  return mergedIds.map((id) => byId[id]).filter(Boolean);
+  return mergedIds
+    .map((id, rank) => {
+      const email = byId[id];
+      return email
+        ? attachSearchScores(email, rank + 1, denseById[id] ?? null, sparseScoreById[id] ?? null)
+        : null;
+    })
+    .filter(Boolean);
 }
 
 module.exports = { hybridSearch, ensureBM25Index, emailsBySimilarityToPrompt };
