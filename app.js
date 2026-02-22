@@ -182,7 +182,9 @@ function getFilteredEmails() {
     const threshold = cluster.threshold != null ? cluster.threshold : 0.3;
     let idSet;
     if (cluster.scored && Array.isArray(cluster.scored)) {
-      idSet = new Set(cluster.scored.filter((s) => s.sim >= threshold).map((s) => s.id));
+      const overrides = cluster.overrides || {};
+      const inCluster = (s) => overrides[s.id] === true || (overrides[s.id] !== false && s.sim >= threshold);
+      idSet = new Set(cluster.scored.filter(inCluster).map((s) => s.id));
     } else if (cluster.emailIds) {
       idSet = new Set(cluster.emailIds);
     } else {
@@ -551,6 +553,35 @@ async function createPromptCluster() {
   }
 }
 
+function clusterIncluded(s, threshold, overrides) {
+  return overrides[s.id] === true || (overrides[s.id] !== false && s.sim >= threshold);
+}
+
+function renderClusterResultsList(resultsEl, scored, threshold, overrides, emailsById, countEl, onRowClick) {
+  if (!resultsEl) return;
+  if (scored.length === 0) {
+    resultsEl.innerHTML = '<p class="settings-hint" style="margin: 0.5rem 0.75rem;">No matches.</p>';
+    if (countEl) countEl.textContent = '0 email(s) in cluster';
+    return;
+  }
+  let inCount = 0;
+  resultsEl.innerHTML = scored.map((s) => {
+    const inCluster = clusterIncluded(s, threshold, overrides);
+    if (inCluster) inCount++;
+    const email = emailsById[s.id];
+    const subject = email && (email.subject || '').trim() ? email.subject : '(no subject)';
+    const rowClass = inCluster ? 'cluster-result-row in-cluster' : 'cluster-result-row not-in-cluster';
+    return '<div class="' + rowClass + '" data-id="' + escapeHtml(s.id) + '" title="Click to include/exclude">' +
+      '<span class="cluster-result-subject" title="' + escapeHtml(subject) + '">' + escapeHtml(subject) + '</span>' +
+      '<span class="cluster-result-sim">' + s.sim.toFixed(2) + '</span>' +
+      '</div>';
+  }).join('');
+  if (countEl) countEl.textContent = inCount + ' email(s) in cluster';
+  resultsEl.querySelectorAll('.cluster-result-row').forEach((row) => {
+    row.addEventListener('click', () => { onRowClick(row.dataset.id); });
+  });
+}
+
 function openClusterThresholdModal(prompt, scored) {
   const overlay = document.getElementById('cluster-threshold-overlay');
   const titleEl = document.getElementById('cluster-threshold-title');
@@ -562,33 +593,27 @@ function openClusterThresholdModal(prompt, scored) {
   titleEl.textContent = 'Create cluster: "' + prompt + '"';
   const emailsById = {};
   getAllEmails().forEach((e) => { emailsById[e.id] = e; });
-  if (resultsEl) {
-    resultsEl.innerHTML = scored.length === 0
-      ? '<p class="settings-hint" style="margin: 0.5rem 0.75rem;">No matches.</p>'
-      : scored.map((s) => {
-          const email = emailsById[s.id];
-          const subject = email && (email.subject || '').trim() ? email.subject : '(no subject)';
-          return '<div class="cluster-result-row">' +
-            '<span class="cluster-result-subject" title="' + escapeHtml(subject) + '">' + escapeHtml(subject) + '</span>' +
-            '<span class="cluster-result-sim">' + s.sim.toFixed(2) + '</span>' +
-            '</div>';
-        }).join('');
+  const overrides = {};
+  function getThreshold() { return parseFloat(sliderEl.value, 10); }
+  function refresh() {
+    const t = getThreshold();
+    valueEl.textContent = t.toFixed(2);
+    renderClusterResultsList(resultsEl, scored, t, overrides, emailsById, countEl, (id) => {
+      const s = scored.find((x) => x.id === id);
+      if (!s) return;
+      const inCluster = clusterIncluded(s, t, overrides);
+      overrides[id] = inCluster ? false : true;
+      refresh();
+    });
   }
   sliderEl.value = '0.3';
-  valueEl.textContent = '0.30';
-  function updateCount() {
-    const t = parseFloat(sliderEl.value, 10);
-    valueEl.textContent = t.toFixed(2);
-    const n = scored.filter((s) => s.sim >= t).length;
-    countEl.textContent = n + ' email(s) in cluster';
-  }
-  updateCount();
-  sliderEl.addEventListener('input', updateCount);
+  sliderEl.addEventListener('input', refresh);
+  refresh();
   overlay.classList.remove('hidden');
 
   function closeModal() {
     overlay.classList.add('hidden');
-    sliderEl.removeEventListener('input', updateCount);
+    sliderEl.removeEventListener('input', refresh);
   }
 
   document.getElementById('cluster-threshold-close').onclick = closeModal;
@@ -596,7 +621,7 @@ function openClusterThresholdModal(prompt, scored) {
   overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
 
   document.getElementById('cluster-threshold-create').onclick = () => {
-    const threshold = parseFloat(sliderEl.value, 10);
+    const threshold = getThreshold();
     const slug = pendingClusterPrompt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cluster';
     const clusters = getPromptClusters();
     let finalSlug = slug;
@@ -609,6 +634,7 @@ function openClusterThresholdModal(prompt, scored) {
       label: pendingClusterPrompt,
       threshold,
       scored: pendingClusterScored,
+      overrides: Object.keys(overrides).length ? overrides : undefined,
       createdAt: new Date().toISOString()
     };
     savePromptClusters(clusters);
@@ -628,6 +654,7 @@ function openClusterThresholdModalForEdit(slug) {
   if (!cluster || !cluster.scored || !Array.isArray(cluster.scored)) return;
   const overlay = document.getElementById('cluster-threshold-overlay');
   const titleEl = document.getElementById('cluster-threshold-title');
+  const resultsEl = document.getElementById('cluster-threshold-results');
   const sliderEl = document.getElementById('cluster-threshold-slider');
   const valueEl = document.getElementById('cluster-threshold-value');
   const countEl = document.getElementById('cluster-threshold-count');
@@ -635,38 +662,32 @@ function openClusterThresholdModalForEdit(slug) {
   if (!overlay || !sliderEl) return;
   const label = cluster.label || slug;
   titleEl.textContent = 'Edit cluster: "' + label + '"';
-  const resultsEl = document.getElementById('cluster-threshold-results');
-  if (resultsEl && cluster.scored.length) {
-    const emailsById = {};
-    getAllEmails().forEach((e) => { emailsById[e.id] = e; });
-    resultsEl.innerHTML = cluster.scored.map((s) => {
-      const email = emailsById[s.id];
-      const subject = email && (email.subject || '').trim() ? email.subject : '(no subject)';
-      return '<div class="cluster-result-row">' +
-        '<span class="cluster-result-subject" title="' + escapeHtml(subject) + '">' + escapeHtml(subject) + '</span>' +
-        '<span class="cluster-result-sim">' + s.sim.toFixed(2) + '</span>' +
-        '</div>';
-    }).join('');
-  } else if (resultsEl) {
-    resultsEl.innerHTML = '';
+  const emailsById = {};
+  getAllEmails().forEach((e) => { emailsById[e.id] = e; });
+  const overrides = cluster.overrides ? { ...cluster.overrides } : {};
+  const scored = cluster.scored;
+  function getThreshold() { return parseFloat(sliderEl.value, 10); }
+  function refresh() {
+    const t = getThreshold();
+    valueEl.textContent = t.toFixed(2);
+    renderClusterResultsList(resultsEl, scored, t, overrides, emailsById, countEl, (id) => {
+      const s = scored.find((x) => x.id === id);
+      if (!s) return;
+      const inCluster = clusterIncluded(s, t, overrides);
+      overrides[id] = inCluster ? false : true;
+      refresh();
+    });
   }
   const currentThreshold = cluster.threshold != null ? cluster.threshold : 0.3;
   sliderEl.value = String(currentThreshold);
-  valueEl.textContent = currentThreshold.toFixed(2);
-  function updateCount() {
-    const t = parseFloat(sliderEl.value, 10);
-    valueEl.textContent = t.toFixed(2);
-    const n = cluster.scored.filter((s) => s.sim >= t).length;
-    countEl.textContent = n + ' email(s) in cluster';
-  }
-  updateCount();
-  sliderEl.addEventListener('input', updateCount);
+  sliderEl.addEventListener('input', refresh);
+  refresh();
   overlay.classList.remove('hidden');
   createBtn.textContent = 'Save';
 
   function closeModal() {
     overlay.classList.add('hidden');
-    sliderEl.removeEventListener('input', updateCount);
+    sliderEl.removeEventListener('input', refresh);
     createBtn.textContent = 'Create cluster';
   }
 
@@ -675,8 +696,9 @@ function openClusterThresholdModalForEdit(slug) {
   overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
 
   createBtn.onclick = () => {
-    const threshold = parseFloat(sliderEl.value, 10);
+    const threshold = getThreshold();
     cluster.threshold = threshold;
+    cluster.overrides = Object.keys(overrides).length ? overrides : undefined;
     savePromptClusters(clusters);
     closeModal();
     refreshCurrentView();

@@ -500,6 +500,19 @@ body {
   border-bottom: none;
 }
 
+.cluster-result-row.in-cluster {
+  background-color: rgba(142, 224, 122, 0.35);
+}
+
+.cluster-result-row.not-in-cluster {
+  background-color: rgba(224, 122, 122, 0.3);
+}
+
+.cluster-result-row {
+  cursor: pointer;
+  user-select: none;
+}
+
 .cluster-result-subject {
   overflow: hidden;
   text-overflow: ellipsis;
