@@ -178,8 +178,16 @@ function getFilteredEmails() {
     const slug = currentFilter.slice(7);
     const clusters = getPromptClusters();
     const cluster = clusters[slug];
-    if (!cluster || !cluster.emailIds) return [];
-    const idSet = new Set(cluster.emailIds);
+    if (!cluster) return [];
+    const threshold = cluster.threshold != null ? cluster.threshold : 0.3;
+    let idSet;
+    if (cluster.scored && Array.isArray(cluster.scored)) {
+      idSet = new Set(cluster.scored.filter((s) => s.sim >= threshold).map((s) => s.id));
+    } else if (cluster.emailIds) {
+      idSet = new Set(cluster.emailIds);
+    } else {
+      return [];
+    }
     return emails.filter((e) => idSet.has(e.id));
   }
   const cats = getCategories();
@@ -196,7 +204,7 @@ function getEmailsWithCategories(emails) {
 
 window.getCategoryColor = function (catId) {
   const cats = getCategories();
-  return cats.meta[catId] && cats.meta[catId].color ? cats.meta[catId].color : '#E5C94A';
+  return cats.meta[catId] && cats.meta[catId].color ? cats.meta[catId].color : '#B8952E';
 };
 
 // --- Compute embeddings ---
@@ -323,6 +331,13 @@ function updateSubtabBar() {
       currentFilter = b.dataset.subtab;
       refreshCurrentView();
     });
+    if (b.dataset.subtab && b.dataset.subtab.startsWith('prompt-')) {
+      const slug = b.dataset.subtab.slice(7);
+      b.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        openClusterThresholdModalForEdit(slug);
+      });
+    }
   });
 }
 
@@ -400,7 +415,8 @@ function refreshCurrentView() {
     renderGraphView(emails);
   } else if (currentView === 'timeline') {
     if (window.TimelineView) {
-      window.TimelineView.render('timeline-stacks', emails, openEmailDetail);
+      const emailsWithCat = getEmailsWithCategories(emails);
+      window.TimelineView.render('timeline-stacks', emailsWithCat, openEmailDetail, window.getCategoryColor);
     }
     ensureTimelineThreadHeaders().then(() => {
       if (currentView === 'timeline' && window.TimelineView) {
@@ -495,6 +511,9 @@ async function fetchFromImap() {
 document.getElementById('refresh-btn').addEventListener('click', fetchFromImap);
 document.getElementById('compute-embeddings-btn').addEventListener('click', computeEmbeddings);
 
+let pendingClusterScored = null;
+let pendingClusterPrompt = '';
+
 async function createPromptCluster() {
   if (typeof window.electronAPI === 'undefined') {
     alert('Create cluster requires the Electron app. Run: npm start');
@@ -515,25 +534,153 @@ async function createPromptCluster() {
   const btn = document.getElementById('prompt-cluster-btn');
   btn.disabled = true;
   const progressEl = document.getElementById('progress-text');
-  progressEl.textContent = 'Creating cluster...';
+  progressEl.textContent = 'Loading similarities...';
   try {
-    const res = await window.electronAPI.embeddings.promptCluster(prompt, embeddings, emailIds, 0.3);
+    const res = await window.electronAPI.embeddings.promptClusterScored(prompt, embeddings, emailIds);
     if (!res.ok) throw new Error(res.error || 'Failed');
-    const slug = prompt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cluster';
-    const clusters = getPromptClusters();
-    clusters[slug] = { emailIds: res.emailIds, label: prompt, createdAt: new Date().toISOString() };
-    savePromptClusters(clusters);
-    if (input) input.value = '';
-    updateSubtabBar();
-    refreshCurrentView();
-    progressEl.textContent = 'Created cluster "' + prompt + '" with ' + res.emailIds.length + ' email(s).';
+    const scored = res.scored || [];
+    progressEl.textContent = '';
+    btn.disabled = false;
+    pendingClusterScored = scored;
+    pendingClusterPrompt = prompt;
+    openClusterThresholdModal(prompt, scored);
   } catch (err) {
     progressEl.textContent = '';
     alert('Error: ' + (err.message || String(err)));
-  } finally {
     btn.disabled = false;
-    setTimeout(() => { progressEl.textContent = ''; }, 3000);
   }
+}
+
+function openClusterThresholdModal(prompt, scored) {
+  const overlay = document.getElementById('cluster-threshold-overlay');
+  const titleEl = document.getElementById('cluster-threshold-title');
+  const resultsEl = document.getElementById('cluster-threshold-results');
+  const sliderEl = document.getElementById('cluster-threshold-slider');
+  const valueEl = document.getElementById('cluster-threshold-value');
+  const countEl = document.getElementById('cluster-threshold-count');
+  if (!overlay || !sliderEl) return;
+  titleEl.textContent = 'Create cluster: "' + prompt + '"';
+  const emailsById = {};
+  getAllEmails().forEach((e) => { emailsById[e.id] = e; });
+  if (resultsEl) {
+    resultsEl.innerHTML = scored.length === 0
+      ? '<p class="settings-hint" style="margin: 0.5rem 0.75rem;">No matches.</p>'
+      : scored.map((s) => {
+          const email = emailsById[s.id];
+          const subject = email && (email.subject || '').trim() ? email.subject : '(no subject)';
+          return '<div class="cluster-result-row">' +
+            '<span class="cluster-result-subject" title="' + escapeHtml(subject) + '">' + escapeHtml(subject) + '</span>' +
+            '<span class="cluster-result-sim">' + s.sim.toFixed(2) + '</span>' +
+            '</div>';
+        }).join('');
+  }
+  sliderEl.value = '0.3';
+  valueEl.textContent = '0.30';
+  function updateCount() {
+    const t = parseFloat(sliderEl.value, 10);
+    valueEl.textContent = t.toFixed(2);
+    const n = scored.filter((s) => s.sim >= t).length;
+    countEl.textContent = n + ' email(s) in cluster';
+  }
+  updateCount();
+  sliderEl.addEventListener('input', updateCount);
+  overlay.classList.remove('hidden');
+
+  function closeModal() {
+    overlay.classList.add('hidden');
+    sliderEl.removeEventListener('input', updateCount);
+  }
+
+  document.getElementById('cluster-threshold-close').onclick = closeModal;
+  document.getElementById('cluster-threshold-cancel').onclick = closeModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+
+  document.getElementById('cluster-threshold-create').onclick = () => {
+    const threshold = parseFloat(sliderEl.value, 10);
+    const slug = pendingClusterPrompt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cluster';
+    const clusters = getPromptClusters();
+    let finalSlug = slug;
+    let idx = 0;
+    while (clusters[finalSlug]) {
+      idx++;
+      finalSlug = slug + '-' + idx;
+    }
+    clusters[finalSlug] = {
+      label: pendingClusterPrompt,
+      threshold,
+      scored: pendingClusterScored,
+      createdAt: new Date().toISOString()
+    };
+    savePromptClusters(clusters);
+    const input = document.getElementById('prompt-cluster-input');
+    if (input) input.value = '';
+    pendingClusterScored = null;
+    pendingClusterPrompt = '';
+    closeModal();
+    updateSubtabBar();
+    refreshCurrentView();
+  };
+}
+
+function openClusterThresholdModalForEdit(slug) {
+  const clusters = getPromptClusters();
+  const cluster = clusters[slug];
+  if (!cluster || !cluster.scored || !Array.isArray(cluster.scored)) return;
+  const overlay = document.getElementById('cluster-threshold-overlay');
+  const titleEl = document.getElementById('cluster-threshold-title');
+  const sliderEl = document.getElementById('cluster-threshold-slider');
+  const valueEl = document.getElementById('cluster-threshold-value');
+  const countEl = document.getElementById('cluster-threshold-count');
+  const createBtn = document.getElementById('cluster-threshold-create');
+  if (!overlay || !sliderEl) return;
+  const label = cluster.label || slug;
+  titleEl.textContent = 'Edit cluster: "' + label + '"';
+  const resultsEl = document.getElementById('cluster-threshold-results');
+  if (resultsEl && cluster.scored.length) {
+    const emailsById = {};
+    getAllEmails().forEach((e) => { emailsById[e.id] = e; });
+    resultsEl.innerHTML = cluster.scored.map((s) => {
+      const email = emailsById[s.id];
+      const subject = email && (email.subject || '').trim() ? email.subject : '(no subject)';
+      return '<div class="cluster-result-row">' +
+        '<span class="cluster-result-subject" title="' + escapeHtml(subject) + '">' + escapeHtml(subject) + '</span>' +
+        '<span class="cluster-result-sim">' + s.sim.toFixed(2) + '</span>' +
+        '</div>';
+    }).join('');
+  } else if (resultsEl) {
+    resultsEl.innerHTML = '';
+  }
+  const currentThreshold = cluster.threshold != null ? cluster.threshold : 0.3;
+  sliderEl.value = String(currentThreshold);
+  valueEl.textContent = currentThreshold.toFixed(2);
+  function updateCount() {
+    const t = parseFloat(sliderEl.value, 10);
+    valueEl.textContent = t.toFixed(2);
+    const n = cluster.scored.filter((s) => s.sim >= t).length;
+    countEl.textContent = n + ' email(s) in cluster';
+  }
+  updateCount();
+  sliderEl.addEventListener('input', updateCount);
+  overlay.classList.remove('hidden');
+  createBtn.textContent = 'Save';
+
+  function closeModal() {
+    overlay.classList.add('hidden');
+    sliderEl.removeEventListener('input', updateCount);
+    createBtn.textContent = 'Create cluster';
+  }
+
+  document.getElementById('cluster-threshold-close').onclick = closeModal;
+  document.getElementById('cluster-threshold-cancel').onclick = closeModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+
+  createBtn.onclick = () => {
+    const threshold = parseFloat(sliderEl.value, 10);
+    cluster.threshold = threshold;
+    savePromptClusters(clusters);
+    closeModal();
+    refreshCurrentView();
+  };
 }
 
 document.getElementById('prompt-cluster-btn').addEventListener('click', createPromptCluster);
@@ -567,8 +714,7 @@ function renderEmailList(emails) {
   const emailsWithCat = getEmailsWithCategories(sorted);
   listEl.innerHTML = emailsWithCat
     .map((e) => {
-      const fromStr = e.from || e.fromEmail || 'Unknown';
-      const catColor = e.categoryId && cats.meta[e.categoryId] ? cats.meta[e.categoryId].color : '#E5C94A';
+      const catColor = e.categoryId && cats.meta[e.categoryId] ? cats.meta[e.categoryId].color : '#B8952E';
       const catTitle = e.categoryId && cats.meta[e.categoryId] ? (cats.meta[e.categoryId].name || '') : '';
       const rankHtml = isSearchMode
         ? '<span class="email-row-rank">#' + String(e.searchRank) + '</span>' +
@@ -581,7 +727,6 @@ function renderEmailList(emails) {
         '<span class="email-row-category-square" style="background-color:' + escapeHtml(catColor) + '" title="' + escapeHtml(catTitle) + '" aria-hidden></span>' +
         (isSearchMode ? rankHtml : '') +
         '<span class="email-row-subject">' + escapeHtml(e.subject) + '</span>' +
-        '<span class="email-row-from">' + escapeHtml(fromStr) + '</span>' +
         '<span class="email-row-date">' + escapeHtml(formatDate(e.date)) + '</span>' +
         '</div>';
     })

@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cluster: (embeddings, emailIds) => ipcRenderer.invoke('embeddings:cluster', embeddings, emailIds),
     promptCluster: (prompt, embeddings, emailIds, threshold) =>
       ipcRenderer.invoke('embeddings:promptCluster', prompt, embeddings, emailIds, threshold),
+    promptClusterScored: (prompt, embeddings, emailIds) =>
+      ipcRenderer.invoke('embeddings:promptClusterScored', prompt, embeddings, emailIds),
     onProgress: (cb) => {
       ipcRenderer.on('embeddings:progress', (_, p) => cb(p));
     }

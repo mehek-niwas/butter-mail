@@ -85,12 +85,23 @@ function rrfMerge(denseResults, sparseResults, emails) {
  * Used for prompt-based clusters (no LLM).
  */
 async function emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshold = 0.2) {
+  const scored = await emailsBySimilarityToPromptScored(prompt, embeddings, emailIds);
+  const above = scored.filter((s) => s.sim >= threshold);
+  if (above.length > 0) return above.map((s) => s.id);
+  return scored.slice(0, 50).map((s) => s.id);
+}
+
+/**
+ * Returns all emails with their similarity to the prompt (for user-defined threshold).
+ * @returns {Promise<Array<{id: string, sim: number}>>} sorted by sim descending
+ */
+async function emailsBySimilarityToPromptScored(prompt, embeddings, emailIds) {
   if (!prompt || !embeddings || !emailIds || emailIds.length === 0) return [];
   const queryEmbedding = await embeddingsService.computeQueryEmbedding(prompt);
   const scored = emailIds
     .map((id) => {
       const vec = embeddings[id];
-      if (!vec) return { id, sim: -1 };
+      if (!vec) return { id, sim: 0 };
       let dot = 0, normA = 0, normB = 0;
       for (let i = 0; i < vec.length; i++) {
         dot += queryEmbedding[i] * vec[i];
@@ -99,12 +110,9 @@ async function emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshol
       }
       const sim = normA && normB ? dot / (Math.sqrt(normA) * Math.sqrt(normB)) : 0;
       return { id, sim };
-    })
-    .filter((s) => s.sim > 0);
+    });
   scored.sort((a, b) => b.sim - a.sim);
-  const above = scored.filter((s) => s.sim >= threshold);
-  if (above.length > 0) return above.map((s) => s.id);
-  return scored.slice(0, 50).map((s) => s.id);
+  return scored;
 }
 
 function attachSearchScores(email, rank, denseScore, sparseScore) {
@@ -114,6 +122,43 @@ function attachSearchScores(email, rank, denseScore, sparseScore) {
     denseScore: denseScore != null ? denseScore : null,
     sparseScore: sparseScore != null ? sparseScore : null
   };
+}
+
+/** Build sparse score map: email id -> BM25 score (from [idx, score] results). */
+function buildSparseScoreById(emails, sparseResults) {
+  const out = {};
+  sparseResults.forEach((entry) => {
+    const idx = Array.isArray(entry) ? entry[0] : entry;
+    const score = Array.isArray(entry) && entry.length > 1 ? entry[1] : null;
+    const email = emails[idx];
+    if (email && score != null) out[email.id] = score;
+  });
+  return out;
+}
+
+/** Ensure every result has both dense and sparse scores when possible. */
+async function fillDenseAndSparseForResults(resultEmails, query, emails, embeddings, denseById, sparseScoreById) {
+  const byId = {};
+  emails.forEach((e) => { byId[e.id] = e; });
+  let denseMap = denseById || {};
+  let sparseMap = sparseScoreById || {};
+  if (embeddings && Object.keys(embeddings).length > 0) {
+    try {
+      const queryEmbedding = await embeddingsService.computeQueryEmbedding(query);
+      const emailIds = emails.map((e) => e.id);
+      const denseResults = denseSearch(queryEmbedding, embeddings, emailIds, Math.max(500, resultEmails.length));
+      denseResults.forEach((r) => { denseMap[r.id] = r.sim; });
+    } catch (_) {}
+  }
+  if (!sparseScoreById && bm25Engine) {
+    const sparseResults = sparseSearch(query, Math.max(500, resultEmails.length));
+    sparseMap = buildSparseScoreById(emails, sparseResults);
+  }
+  return resultEmails.map((e) => ({
+    ...e,
+    denseScore: e.denseScore != null ? e.denseScore : (denseMap[e.id] ?? null),
+    sparseScore: e.sparseScore != null ? e.sparseScore : (sparseMap[e.id] ?? null)
+  }));
 }
 
 async function hybridSearch(query, emails, embeddings) {
@@ -153,10 +198,12 @@ async function hybridSearch(query, emails, embeddings) {
         (e.subject && e.subject.toLowerCase().includes(q)) ||
         (e.body && e.body.toLowerCase().includes(q))
     );
-    return filtered.map((e, i) => attachSearchScores(e, i + 1, null, null));
+    let fallbackResults = filtered.map((e, i) => attachSearchScores(e, i + 1, null, null));
+    fallbackResults = await fillDenseAndSparseForResults(fallbackResults, query, emails, embeddings, {}, null);
+    return fallbackResults;
   }
   if (denseResults.length === 0) {
-    return sparseResults
+    let sparseOnly = sparseResults
       .map((entry, rank) => {
         const idx = Array.isArray(entry) ? entry[0] : entry;
         const score = Array.isArray(entry) && entry.length > 1 ? entry[1] : null;
@@ -164,18 +211,22 @@ async function hybridSearch(query, emails, embeddings) {
         return email ? attachSearchScores(email, rank + 1, null, score) : null;
       })
       .filter(Boolean);
+    sparseOnly = await fillDenseAndSparseForResults(sparseOnly, query, emails, embeddings, {}, sparseScoreById);
+    return sparseOnly;
   }
   if (sparseResults.length === 0) {
-    return denseResults
+    let denseOnly = denseResults
       .map((r, rank) => {
         const email = byId[r.id];
         return email ? attachSearchScores(email, rank + 1, r.sim, null) : null;
       })
       .filter(Boolean);
+    denseOnly = await fillDenseAndSparseForResults(denseOnly, query, emails, embeddings, denseById, null);
+    return denseOnly;
   }
 
   const mergedIds = rrfMerge(denseResults, sparseResults, emails);
-  return mergedIds
+  let merged = mergedIds
     .map((id, rank) => {
       const email = byId[id];
       return email
@@ -183,6 +234,8 @@ async function hybridSearch(query, emails, embeddings) {
         : null;
     })
     .filter(Boolean);
+  merged = await fillDenseAndSparseForResults(merged, query, emails, embeddings, denseById, sparseScoreById);
+  return merged;
 }
 
-module.exports = { hybridSearch, ensureBM25Index, emailsBySimilarityToPrompt };
+module.exports = { hybridSearch, ensureBM25Index, emailsBySimilarityToPrompt, emailsBySimilarityToPromptScored };

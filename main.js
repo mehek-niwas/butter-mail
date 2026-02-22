@@ -311,6 +311,15 @@ ipcMain.handle('embeddings:promptCluster', async (_, prompt, embeddings, emailId
   }
 });
 
+ipcMain.handle('embeddings:promptClusterScored', async (_, prompt, embeddings, emailIds) => {
+  try {
+    const scored = await searchService.emailsBySimilarityToPromptScored(prompt, embeddings, emailIds);
+    return { ok: true, scored };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), scored: [] };
+  }
+});
+
 ipcMain.handle('imap:test', async (_, config) => {
   const client = new ImapFlow({
     host: config.host,

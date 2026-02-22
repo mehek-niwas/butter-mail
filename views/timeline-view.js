@@ -67,9 +67,10 @@
     return s.replace(/^(re:\s*|fwd:\s*|fw:\s*)+/gi, '').trim().toLowerCase();
   }
 
-  function render(containerId, emails, onEmailClick) {
+  function render(containerId, emails, onEmailClick, getCategoryColor) {
     const container = document.getElementById(containerId || 'timeline-stacks');
     if (!container) return;
+    const getColor = typeof getCategoryColor === 'function' ? getCategoryColor : () => '#B8952E';
 
     const threads = buildThreads(emails);
     container.innerHTML = '';
@@ -83,6 +84,8 @@
         card.className = 'timeline-card';
         card.style.transform = `translate(${ei * 10}px, ${ei * 10}px)`;
         card.style.zIndex = ei;
+        const catColor = (email.categoryId && getColor(email.categoryId)) || getColor(null);
+        card.style.borderLeftColor = catColor;
         card.innerHTML = `
           <span class="timeline-card-subject">${escapeHtml(email.subject || '(no subject)')}</span>
           <span class="timeline-card-date">${formatDate(email.date)}</span>
