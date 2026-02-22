@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>butter mail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <h1 class="logo"><img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="logo-img" /><img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden /><span class="logo-text">butter mail</span></h1>
+
+        <p class="welcome">welcome to your spread, mehek!</p>
+
+        <nav class="nav-buttons">
+          <button type="button" class="nav-btn" data-tab="views">views</button>
+          <button type="button" class="nav-btn active" data-tab="categories">categories</button>
+          <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">⚙</button>
+        </nav>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main">
+        <!-- Search Bar -->
+        <div class="search-bar">
+          <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" class="search-input" placeholder="search" />
+        </div>
+
+        <!-- Category subtabs (shown when categories is active) -->
+        <div class="subtab-bar" id="subtab-bar">
+          <button type="button" class="subtab-btn active" data-subtab="all">all</button>
+          <button type="button" class="subtab-btn" data-subtab="category1">category 1</button>
+          <button type="button" class="subtab-btn" data-subtab="category2">category 2</button>
+          <button type="button" class="subtab-btn" data-subtab="category3">category 3</button>
+        </div>
+
+        <!-- All emails view -->
+        <div class="content-panel" id="panel-all">
+          <div class="import-section">
+            <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">↻ refresh</button>
+            <label class="import-btn">
+              <input type="file" id="email-import" accept=".eml,.mbox,.txt" multiple hidden />
+              import .eml / .mbox
+            </label>
+          </div>
+          <div class="email-list" id="email-list"></div>
+        </div>
+
+        <!-- Category cards view -->
+        <div class="content-panel hidden" id="panel-categories">
+          <div class="category-list">
+            <div class="category-card">
+              <div class="category-icon color-yellow"></div>
+              <p class="category-title">category 1</p>
+            </div>
+            <div class="category-card">
+              <div class="category-icon color-purple"></div>
+              <p class="category-title">category 2</p>
+            </div>
+            <div class="category-card">
+              <div class="category-icon color-purple"></div>
+              <p class="category-title">category 2</p>
+            </div>
+            <div class="category-card">
+              <div class="category-icon color-yellow"></div>
+              <p class="category-title">category 1</p>
+            </div>
+            <div class="category-card">
+              <div class="category-icon color-pink"></div>
+              <p class="category-title">category 3</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings modal -->
+        <div class="email-detail-overlay hidden" id="settings-overlay">
+          <div class="email-detail-panel settings-panel">
+            <button type="button" class="email-detail-close" id="settings-close">×</button>
+            <h2 class="settings-title">IMAP settings</h2>
+            <p class="settings-hint">Gmail: imap.gmail.com:993 (use App Password). Outlook: outlook.office365.com:993</p>
+            <form class="settings-form" id="settings-form">
+              <label>Host</label>
+              <input type="text" name="host" placeholder="imap.gmail.com" required />
+              <label>Port</label>
+              <input type="number" name="port" placeholder="993" value="993" />
+              <label>Email</label>
+              <input type="email" name="user" placeholder="you@gmail.com" required />
+              <label>Password / App Password</label>
+              <input type="password" name="pass" placeholder="••••••••" required />
+              <div class="settings-actions">
+                <button type="button" class="settings-test" id="settings-test">test connection</button>
+                <button type="submit" class="settings-save">save</button>
+              </div>
+            </form>
+            <p class="settings-status" id="settings-status"></p>
+          </div>
+        </div>
+
+        <!-- Email detail view (modal) -->
+        <div class="email-detail-overlay hidden" id="email-detail">
+          <div class="email-detail-panel">
+            <button type="button" class="email-detail-close" id="email-detail-close">×</button>
+            <div class="email-detail-header">
+              <h2 class="email-detail-subject" id="email-detail-subject"></h2>
+              <p class="email-detail-meta" id="email-detail-meta"></p>
+            </div>
+            <div class="email-detail-body" id="email-detail-body"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "butter-mail",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "imapflow": "^1.0.170"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
