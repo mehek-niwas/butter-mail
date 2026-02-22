@@ -268,15 +268,24 @@ body {
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 1rem;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 0.5rem 1rem;
   align-items: center;
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, background-color 0.2s;
 }
 
 .email-row:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  background-color: #EDE9DC;
+}
+
+.email-row-category-square {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .email-row-subject {
@@ -337,27 +346,72 @@ body {
 }
 
 .email-detail-header {
-  padding: 1.5rem 1.5rem 0.5rem;
+  padding: 1.5rem 1.5rem 0.75rem;
 }
 
 .email-detail-subject {
   font-size: 1.125rem;
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.75rem;
 }
 
-.email-detail-meta {
-  font-size: 0.75rem;
+.email-detail-meta-block {
+  background-color: #EDE9DC;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.email-detail-meta-row {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.2rem 0;
+}
+
+.email-detail-meta-label {
   color: #6B5A2E;
+  min-width: 3rem;
+  flex-shrink: 0;
 }
 
 .email-detail-body {
   padding: 1rem 1.5rem 1.5rem;
   overflow-y: auto;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  max-width: 65ch;
   word-break: break-word;
+}
+
+.email-detail-body blockquote {
+  margin: 0.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid #E5C94A;
+  background-color: rgba(229, 201, 74, 0.15);
+  color: #4A3B1F;
+}
+
+.email-detail-body a {
+  color: #5B4A2F;
+  text-decoration: underline;
+}
+
+.email-detail-body a:hover {
+  color: #4A3B1F;
+}
+
+.email-detail-body p {
+  margin: 0 0 0.5rem;
+}
+
+.email-detail-body p:last-child {
+  margin-bottom: 0;
+}
+
+.email-detail-body ul,
+.email-detail-body ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
 }
 
 /* Settings modal */
@@ -420,4 +474,221 @@ body {
   margin-top: 0.75rem;
   font-size: 0.75rem;
   min-height: 1.25rem;
+}
+
+/* View tabs */
+.view-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.view-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  background-color: #EBD98E;
+  color: #4A3B1F;
+}
+
+.view-tab:hover {
+  background-color: #E5C94A;
+}
+
+.view-tab.active {
+  background-color: #E5C94A;
+}
+
+/* Compute embeddings */
+.compute-embeddings-btn {
+  padding: 0.5rem 1rem;
+  background-color: #C89BE6;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: #4A3B1F;
+}
+
+.compute-embeddings-btn:hover {
+  background-color: #B87BD6;
+}
+
+.compute-embeddings-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.prompt-cluster-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.prompt-cluster-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #EBD98E;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background-color: #F3F0E8;
+  color: #4A3B1F;
+  min-width: 14rem;
+}
+
+.prompt-cluster-input::placeholder {
+  color: #6B5A2E;
+  opacity: 0.8;
+}
+
+.prompt-cluster-btn {
+  padding: 0.5rem 1rem;
+  background-color: #C89BE6;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: #4A3B1F;
+}
+
+.prompt-cluster-btn:hover {
+  background-color: #B87BD6;
+}
+
+.prompt-cluster-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.progress-text {
+  font-size: 0.8rem;
+  color: #6B5A2E;
+  margin-left: 0.5rem;
+}
+
+/* Graph view */
+.graph-container {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: linear-gradient(165deg, #f8f6f0 0%, #ede9dc 50%, #e8e2d4 100%);
+  box-shadow: inset 0 1px 3px rgba(74, 59, 31, 0.06);
+}
+
+#graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-axis-legend {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  gap: 1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #6b5a2e;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.graph-axis-label::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+  border-radius: 0.125rem;
+}
+
+.graph-axis-x::before { background-color: #c89be6; }
+.graph-axis-y::before { background-color: #e5c94a; }
+.graph-axis-z::before { background-color: #e07acd; }
+
+.graph-tooltip {
+  position: absolute;
+  padding: 0.5rem 0.75rem;
+  background: rgba(74, 59, 31, 0.92);
+  color: #F3F0E8;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  max-width: 20rem;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Timeline view */
+.timeline-stacks {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.timeline-stack {
+  position: relative;
+  min-height: 4rem;
+  cursor: pointer;
+}
+
+.timeline-stack.expanded {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  min-height: auto;
+}
+
+.timeline-stack.expanded .timeline-card {
+  position: relative;
+  transform: none;
+  left: auto;
+  top: auto;
+}
+
+.timeline-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.75rem 1rem;
+  background-color: #F3F0E8;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.timeline-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 5;
+}
+
+.timeline-card-subject {
+  font-weight: 500;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-card-date {
+  font-size: 0.75rem;
+  color: #6B5A2E;
+}
+
+
+.view-panel {
+  margin-top: 1rem;
 }

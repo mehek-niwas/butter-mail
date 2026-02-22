@@ -18,9 +18,8 @@
         <p class="welcome">welcome to your spread, mehek!</p>
 
         <nav class="nav-buttons">
-          <button type="button" class="nav-btn" data-tab="views">views</button>
-          <button type="button" class="nav-btn active" data-tab="categories">categories</button>
-          <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">⚙</button>
+          <button type="button" class="nav-btn active" data-tab="views">views</button>
+          <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">&#9881;</button>
         </nav>
       </aside>
 
@@ -35,56 +34,60 @@
           <input type="text" class="search-input" placeholder="search" />
         </div>
 
-        <!-- Category subtabs (shown when categories is active) -->
-        <div class="subtab-bar" id="subtab-bar">
-          <button type="button" class="subtab-btn active" data-subtab="all">all</button>
-          <button type="button" class="subtab-btn" data-subtab="category1">category 1</button>
-          <button type="button" class="subtab-btn" data-subtab="category2">category 2</button>
-          <button type="button" class="subtab-btn" data-subtab="category3">category 3</button>
+        <!-- View tabs: List | Graph | Timeline -->
+        <div class="view-tabs" id="view-tabs">
+          <button type="button" class="view-tab active" data-view="list">List</button>
+          <button type="button" class="view-tab" data-view="graph">Graph</button>
+          <button type="button" class="view-tab" data-view="timeline">Timeline</button>
         </div>
 
-        <!-- All emails view -->
-        <div class="content-panel" id="panel-all">
-          <div class="import-section">
-            <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">↻ refresh</button>
-            <label class="import-btn">
-              <input type="file" id="email-import" accept=".eml,.mbox,.txt" multiple hidden />
-              import .eml / .mbox
-            </label>
+        <!-- Category subtabs (all | category 1 | category 2 | ...) -->
+        <div class="subtab-bar" id="subtab-bar">
+          <button type="button" class="subtab-btn active" data-subtab="all">all</button>
+        </div>
+
+        <!-- Import + Compute embeddings + Create cluster -->
+        <div class="import-section" id="import-section">
+          <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">&#8635; refresh</button>
+          <label class="import-btn">
+            <input type="file" id="email-import" accept=".eml,.mbox,.txt" multiple hidden />
+            import .eml / .mbox
+          </label>
+          <button type="button" class="compute-embeddings-btn" id="compute-embeddings-btn" title="Compute embeddings, PCA and categories">compute embeddings</button>
+          <div class="prompt-cluster-row">
+            <input type="text" id="prompt-cluster-input" class="prompt-cluster-input" placeholder="Create cluster from prompt (e.g. application)" />
+            <button type="button" class="prompt-cluster-btn" id="prompt-cluster-btn" title="Create a cluster of emails matching this prompt">create cluster</button>
           </div>
+          <span class="progress-text" id="progress-text"></span>
+        </div>
+
+        <!-- List view -->
+        <div class="content-panel view-panel" id="panel-list">
           <div class="email-list" id="email-list"></div>
         </div>
 
-        <!-- Category cards view -->
-        <div class="content-panel hidden" id="panel-categories">
-          <div class="category-list">
-            <div class="category-card">
-              <div class="category-icon color-yellow"></div>
-              <p class="category-title">category 1</p>
+        <!-- Graph view (3D) -->
+        <div class="content-panel view-panel hidden" id="panel-graph">
+          <div class="graph-container" id="graph-container">
+            <canvas id="graph-canvas"></canvas>
+            <div class="graph-axis-legend">
+              <span class="graph-axis-label graph-axis-x">X</span>
+              <span class="graph-axis-label graph-axis-y">Y</span>
+              <span class="graph-axis-label graph-axis-z">Z</span>
             </div>
-            <div class="category-card">
-              <div class="category-icon color-purple"></div>
-              <p class="category-title">category 2</p>
-            </div>
-            <div class="category-card">
-              <div class="category-icon color-purple"></div>
-              <p class="category-title">category 2</p>
-            </div>
-            <div class="category-card">
-              <div class="category-icon color-yellow"></div>
-              <p class="category-title">category 1</p>
-            </div>
-            <div class="category-card">
-              <div class="category-icon color-pink"></div>
-              <p class="category-title">category 3</p>
-            </div>
+            <div class="graph-tooltip hidden" id="graph-tooltip"></div>
           </div>
+        </div>
+
+        <!-- Timeline view (card stacks) -->
+        <div class="content-panel view-panel hidden" id="panel-timeline">
+          <div class="timeline-stacks" id="timeline-stacks"></div>
         </div>
 
         <!-- Settings modal -->
         <div class="email-detail-overlay hidden" id="settings-overlay">
           <div class="email-detail-panel settings-panel">
-            <button type="button" class="email-detail-close" id="settings-close">×</button>
+            <button type="button" class="email-detail-close" id="settings-close">&#215;</button>
             <h2 class="settings-title">IMAP settings</h2>
             <p class="settings-hint">Gmail: imap.gmail.com:993 (use App Password). Outlook: outlook.office365.com:993</p>
             <form class="settings-form" id="settings-form">
@@ -95,7 +98,7 @@
               <label>Email</label>
               <input type="email" name="user" placeholder="you@gmail.com" required />
               <label>Password / App Password</label>
-              <input type="password" name="pass" placeholder="••••••••" required />
+              <input type="password" name="pass" placeholder="&#149;&#149;&#149;&#149;&#149;&#149;&#149;&#149;" required />
               <div class="settings-actions">
                 <button type="button" class="settings-test" id="settings-test">test connection</button>
                 <button type="submit" class="settings-save">save</button>
@@ -108,10 +111,14 @@
         <!-- Email detail view (modal) -->
         <div class="email-detail-overlay hidden" id="email-detail">
           <div class="email-detail-panel">
-            <button type="button" class="email-detail-close" id="email-detail-close">×</button>
+            <button type="button" class="email-detail-close" id="email-detail-close">&#215;</button>
             <div class="email-detail-header">
               <h2 class="email-detail-subject" id="email-detail-subject"></h2>
-              <p class="email-detail-meta" id="email-detail-meta"></p>
+              <div class="email-detail-meta-block">
+                <div class="email-detail-meta-row"><span class="email-detail-meta-label">From</span><span id="email-detail-from"></span></div>
+                <div class="email-detail-meta-row"><span class="email-detail-meta-label">To</span><span id="email-detail-to"></span></div>
+                <div class="email-detail-meta-row"><span class="email-detail-meta-label">Date</span><span id="email-detail-date"></span></div>
+              </div>
             </div>
             <div class="email-detail-body" id="email-detail-body"></div>
           </div>
@@ -119,6 +126,12 @@
       </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="views/graph-view.js"></script>
+    <script src="views/timeline-view.js"></script>
+    <script src="search/hybrid-search.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

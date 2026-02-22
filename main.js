@@ -2,6 +2,11 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { ImapFlow } = require('imapflow');
+const { simpleParser } = require('mailparser');
+const embeddingsService = require('./embeddings-service');
+const pcaUtils = require('./pca-utils');
+const clustering = require('./clustering');
+const searchService = require('./search-service');
 
 const configPath = path.join(app.getPath('userData'), 'imap-config.json');
 
@@ -18,47 +23,32 @@ function saveConfig(config) {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 
-function parseEmlFromSource(buffer) {
-  if (!buffer) return { from: '', to: '', subject: '(no subject)', date: '', body: '', fromEmail: '' };
-  const text = Buffer.isBuffer(buffer) ? buffer.toString('utf8') : String(buffer);
-  const lines = text.split(/\r?\n/);
-  const headers = {};
-  let bodyStart = -1;
-  let i = 0;
-
-  for (; i < lines.length; i++) {
-    const line = lines[i];
-    if (line === '') {
-      bodyStart = i;
-      break;
-    }
-    const match = line.match(/^([\w-]+):\s*(.*)$/i);
-    if (match) {
-      const key = match[1].toLowerCase();
-      let val = match[2];
-      while (i + 1 < lines.length && /^\s/.test(lines[i + 1])) {
-        i++;
-        val += lines[i].trim();
-      }
-      headers[key] = val;
-    }
+async function parseEmlFromSource(buffer) {
+  if (!buffer) return { from: '', to: '', subject: '(no subject)', date: '', body: '', bodyIsHtml: false, fromEmail: '', toDisplay: '', messageId: '', inReplyTo: '', references: '' };
+  try {
+    const parsed = await simpleParser(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+    const body = parsed.html || parsed.text || '';
+    const bodyIsHtml = !!parsed.html;
+    const fromAddr = parsed.from?.value?.[0];
+    const messageId = parsed.messageId ? (Array.isArray(parsed.messageId) ? parsed.messageId[0] : String(parsed.messageId)).trim() : '';
+    const inReplyTo = parsed.inReplyTo ? (Array.isArray(parsed.inReplyTo) ? parsed.inReplyTo.join(' ') : String(parsed.inReplyTo)).trim() : '';
+    const references = parsed.references ? (Array.isArray(parsed.references) ? parsed.references.join(' ') : String(parsed.references)).trim() : '';
+    return {
+      from: parsed.from?.text || '',
+      to: parsed.to?.text || '',
+      subject: (parsed.subject || '(no subject)').replace(/\s+/g, ' ').trim(),
+      date: parsed.date ? parsed.date.toISOString() : '',
+      body,
+      bodyIsHtml,
+      fromEmail: fromAddr?.address || '',
+      toDisplay: parsed.to?.text || '',
+      messageId,
+      inReplyTo,
+      references
+    };
+  } catch {
+    return { from: '', to: '', subject: '(no subject)', date: '', body: '', bodyIsHtml: false, fromEmail: '', toDisplay: '', messageId: '', inReplyTo: '', references: '' };
   }
-
-  const body = bodyStart >= 0 ? lines.slice(bodyStart + 1).join('\n').trim() : '';
-  function extractEmail(str) {
-    if (!str) return '';
-    const m = str.match(/<([^>]+)>/);
-    return m ? m[1] : str.trim();
-  }
-
-  return {
-    from: headers.from || '',
-    to: headers.to || '',
-    subject: (headers.subject || '(no subject)').replace(/\s+/g, ' ').trim(),
-    date: headers.date || '',
-    body,
-    fromEmail: extractEmail(headers.from)
-  };
 }
 
 let mainWindow;
@@ -163,7 +153,7 @@ ipcMain.handle('imap:fetchOne', async (_, uid) => {
     const msg = await client.fetchOne(String(uid), { envelope: true, source: true }, { uid: true });
     let email = null;
     if (msg) {
-      const parsed = parseEmlFromSource(msg.source);
+      const parsed = await parseEmlFromSource(msg.source);
       const fromAddr = msg.envelope?.from?.[0];
       email = {
         id: `imap-${msg.uid}`,
@@ -171,13 +161,153 @@ ipcMain.handle('imap:fetchOne', async (_, uid) => {
         from: fromAddr ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address) : parsed.from,
         date: msg.envelope?.date ? new Date(msg.envelope.date).toISOString() : parsed.date,
         body: parsed.body,
-        fromEmail: fromAddr?.address || parsed.fromEmail
+        bodyIsHtml: parsed.bodyIsHtml,
+        toDisplay: parsed.toDisplay,
+        fromEmail: fromAddr?.address || parsed.fromEmail,
+        messageId: parsed.messageId || '',
+        inReplyTo: parsed.inReplyTo || '',
+        references: parsed.references || ''
       };
     }
     await client.logout();
     return { ok: true, email };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
+  const config = loadConfig();
+  if (!config || !config.host || !config.user || !config.pass || !uids || uids.length === 0) {
+    return { ok: true, headers: {} };
+  }
+  const client = new ImapFlow({
+    host: config.host,
+    port: config.port || 993,
+    secure: config.secure !== false,
+    auth: { user: config.user, pass: config.pass },
+    logger: false
+  });
+  try {
+    await client.connect();
+    await client.mailboxOpen('INBOX');
+    const headers = {};
+    const maxUids = Math.min(uids.length, 300);
+    for (let i = 0; i < maxUids; i++) {
+      const uid = uids[i];
+      try {
+        const msg = await client.fetchOne(String(uid), { source: { start: 0, maxLength: 8192 } }, { uid: true });
+        if (msg && msg.source) {
+          const parsed = await parseEmlFromSource(msg.source);
+          headers[uid] = {
+            messageId: parsed.messageId || '',
+            inReplyTo: parsed.inReplyTo || '',
+            references: parsed.references || ''
+          };
+        }
+      } catch (_) {}
+    }
+    await client.logout();
+    return { ok: true, headers };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), headers: {} };
+  }
+});
+
+ipcMain.handle('imap:fetchBodies', async (_, uids) => {
+  const config = loadConfig();
+  if (!config || !config.host || !config.user || !config.pass || !uids || uids.length === 0) {
+    return { ok: true, bodies: {} };
+  }
+  const client = new ImapFlow({
+    host: config.host,
+    port: config.port || 993,
+    secure: config.secure !== false,
+    auth: { user: config.user, pass: config.pass },
+    logger: false
+  });
+  try {
+    await client.connect();
+    await client.mailboxOpen('INBOX');
+    const bodies = {};
+    for (const uid of uids) {
+      const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
+      if (msg) {
+        const parsed = await parseEmlFromSource(msg.source);
+        bodies[uid] = { body: parsed.body, bodyIsHtml: parsed.bodyIsHtml };
+      }
+    }
+    await client.logout();
+    return { ok: true, bodies };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), bodies: {} };
+  }
+});
+
+ipcMain.handle('embeddings:compute', async (_, emails) => {
+  try {
+    const onProgress = (p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('embeddings:progress', p);
+      }
+    };
+    const results = await embeddingsService.computeEmbeddings(emails, onProgress);
+    return { ok: true, embeddings: results };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('embeddings:pca', async (_, embeddings, emailIds) => {
+  try {
+    const matrix = emailIds.map((id) => embeddings[id]).filter(Boolean);
+    const ids = emailIds.filter((id) => embeddings[id]);
+    if (matrix.length === 0) return { ok: true, points: [], model: null };
+    const { points, model } = pcaUtils.fitAndProject(matrix, 3);
+    const pointMap = {};
+    ids.forEach((id, i) => { pointMap[id] = points[i]; });
+    return { ok: true, points: pointMap, model };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('embeddings:cluster', async (_, embeddings, emailIds) => {
+  try {
+    const matrix = emailIds.map((id) => embeddings[id]).filter(Boolean);
+    const ids = emailIds.filter((id) => embeddings[id]);
+    if (matrix.length === 0) return { ok: true, assignments: {}, meta: {} };
+    const { assignments, meta } = clustering.cluster(matrix, ids);
+    return { ok: true, assignments, meta };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('embeddings:query', async (_, query) => {
+  try {
+    const vec = await embeddingsService.computeQueryEmbedding(query);
+    return { ok: true, embedding: vec };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('search:hybrid', async (_, query, emails, embeddings) => {
+  try {
+    const results = await searchService.hybridSearch(query, emails, embeddings);
+    return { ok: true, emails: results };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), emails: [] };
+  }
+});
+
+ipcMain.handle('embeddings:promptCluster', async (_, prompt, embeddings, emailIds, threshold = 0.5) => {
+  try {
+    const ids = await searchService.emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshold);
+    return { ok: true, emailIds: ids };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), emailIds: [] };
   }
 });
 
