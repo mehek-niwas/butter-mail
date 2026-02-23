@@ -449,48 +449,6 @@ function renderGraphView(emails) {
   window.GraphView.render(points, emailsById);
 }
 
-// --- Import ---
-document.getElementById('email-import').addEventListener('change', (e) => {
-  const files = e.target.files;
-  if (!files || files.length === 0) return;
-
-  const emails = getEmails();
-  let added = 0;
-
-  const readNext = (index) => {
-    if (index >= files.length) {
-      saveEmails(emails);
-      refreshCurrentView();
-      updateSubtabBar();
-      e.target.value = '';
-      if (added > 0) alert('Imported ' + added + ' email(s).');
-      return;
-    }
-
-    const file = files[index];
-    const ext = (file.name || '').toLowerCase();
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = reader.result;
-        if (ext.endsWith('.mbox')) {
-          const parsed = parseMbox(text);
-          parsed.forEach((p) => { emails.push(p); added++; });
-        } else {
-          emails.push(parseEml(text));
-          added++;
-        }
-      } catch (err) {
-        console.warn('Could not parse', file.name, err);
-      }
-      readNext(index + 1);
-    };
-    reader.readAsText(file);
-  };
-
-  readNext(0);
-});
-
 // --- Fetch IMAP ---
 async function fetchFromImap() {
   if (typeof window.electronAPI === 'undefined') return;
@@ -727,8 +685,8 @@ function renderEmailList(emails) {
 
   if (sorted.length === 0) {
     const hint = typeof window.electronAPI !== 'undefined'
-      ? 'Click "refresh" to fetch from IMAP, or import .eml / .mbox files.'
-      : 'Import .eml or .mbox files to get started.';
+      ? 'Click "refresh" to fetch from IMAP.'
+      : 'Fetch from IMAP to get started.';
     listEl.innerHTML = '<p class="email-list-empty">No emails yet. ' + hint + '</p>';
     return;
   }
@@ -749,7 +707,7 @@ function renderEmailList(emails) {
       return '<div class="email-row' + (isSearchMode ? ' email-row-search' : '') + '" data-id="' + escapeHtml(e.id) + '">' +
         '<span class="email-row-category-square" style="background-color:' + escapeHtml(catColor) + '" title="' + escapeHtml(catTitle) + '" aria-hidden></span>' +
         (isSearchMode ? rankHtml : '') +
-        '<span class="email-row-subject">' + escapeHtml(e.subject) + '</span>' +
+        '<span class="email-row-subject" style="text-decoration-color:' + escapeHtml(catColor) + '">' + escapeHtml(e.subject) + '</span>' +
         '<span class="email-row-date">' + escapeHtml(formatDate(e.date)) + '</span>' +
         '</div>';
     })
