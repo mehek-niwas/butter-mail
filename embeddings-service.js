@@ -36,7 +36,10 @@ let pipeline = null;
 async function getPipeline() {
   if (pipeline) return pipeline;
   const { pipeline: createPipeline } = await import('@huggingface/transformers');
-  pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+    device: 'auto',
+    dtype: 'fp32'
+  });
   return pipeline;
 }
 
