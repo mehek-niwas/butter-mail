@@ -997,9 +997,11 @@ composeForm.addEventListener('submit', async (e) => {
   const to = document.getElementById('compose-to').value.trim();
   const subject = document.getElementById('compose-subject').value.trim();
   const body = document.getElementById('compose-body').value.trim();
+  const signature = '\n\n- sent with butter mail';
+  const text = body ? body + signature : signature.trim();
   composeStatus.textContent = 'Sending...';
   composeStatus.className = 'compose-status';
-  const result = await window.electronAPI.smtp.send({ to, subject, text: body });
+  const result = await window.electronAPI.smtp.send({ to, subject, text });
   if (result.ok) {
     composeStatus.textContent = 'Sent.';
     composeStatus.className = 'compose-status success';
