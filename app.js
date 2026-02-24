@@ -1159,11 +1159,19 @@ composeForm.addEventListener('submit', async (e) => {
   const to = document.getElementById('compose-to').value.trim();
   const subject = document.getElementById('compose-subject').value.trim();
   const body = document.getElementById('compose-body').value.trim();
-  const signature = '\n\n- sent with butter mail';
-  const text = body ? body + signature : signature.trim();
+  const butterMailUrl = 'https://github.com/mehek-niwas/butter-mail';
+  const signatureText = '\n\n- sent with butter mail ' + butterMailUrl;
+  const text = body ? body + signatureText : signatureText.trim();
+
+  const urlRe = /(https?:\/\/[^\s<]+)/g;
+  const bodyHtml = escapeHtml(body)
+    .replace(urlRe, (m) => '<a href="' + escapeHtml(m) + '">' + escapeHtml(m) + '</a>')
+    .replace(/\n/g, '<br>');
+  const signatureHtml = '- sent with <a href="' + butterMailUrl + '">butter mail</a>';
+  const html = (body ? bodyHtml + '<br><br>' : '') + signatureHtml;
   composeStatus.textContent = 'Sending...';
   composeStatus.className = 'compose-status';
-  const result = await window.electronAPI.smtp.send({ to, subject, text });
+  const result = await window.electronAPI.smtp.send({ to, subject, text, html });
   if (result.ok) {
     composeStatus.textContent = 'Sent.';
     composeStatus.className = 'compose-status success';
