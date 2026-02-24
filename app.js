@@ -171,6 +171,8 @@ let pcaPoints = getPcaPoints();
 let searchQuery = '';
 let searchResults = null;
 let selectedEmail = null;
+let timelineViewInList = false;
+const expandedThreads = new Set();
 
 function getFilteredEmails() {
   let emails = searchResults !== null ? searchResults : getAllEmails();
@@ -237,43 +239,81 @@ async function computeEmbeddings() {
   }
 
   const progressEl = document.getElementById('progress-text');
-  progressEl.textContent = 'Loading model...';
   const btn = document.getElementById('compute-embeddings-btn');
-  btn.disabled = true;
+  if (progressEl) {
+    progressEl.textContent = 'Loading model...';
+  }
+  if (btn) {
+    btn.disabled = true;
+  }
+  console.log('[butter-mail] computeEmbeddings: loading model...');
 
   if (window.electronAPI.embeddings.onProgress) {
     window.electronAPI.embeddings.onProgress((p) => {
-      progressEl.textContent = `${p.current} / ${p.total} ${p.message || ''}`;
+      const message = `${p.current} / ${p.total} ${p.message || ''}`;
+      if (progressEl) {
+        progressEl.textContent = message;
+      }
+      console.log('[butter-mail] computeEmbeddings progress:', message);
     });
   }
 
   try {
+    console.log('[butter-mail] computeEmbeddings: computing embeddings for', emails.length, 'emails');
     const res = await window.electronAPI.embeddings.compute(emails);
     if (!res.ok) throw new Error(res.error || 'Failed');
     saveEmbeddings(res.embeddings);
+    console.log('[butter-mail] computeEmbeddings: embeddings computed and saved for', Object.keys(res.embeddings || {}).length, 'emails');
 
     const emailIds = Object.keys(res.embeddings);
     if (emailIds.length > 0) {
+      if (progressEl) {
+        progressEl.textContent = 'Running PCA...';
+      }
+      console.log('[butter-mail] computeEmbeddings: running PCA for', emailIds.length, 'emails');
       const pcaRes = await window.electronAPI.embeddings.pca(res.embeddings, emailIds);
       if (pcaRes.ok && pcaRes.points) {
         pcaPoints = pcaRes.points;
         savePcaModel(pcaRes.model);
         savePcaPoints(pcaPoints);
+        console.log('[butter-mail] computeEmbeddings: PCA complete.');
+      } else {
+        console.warn('[butter-mail] computeEmbeddings: PCA did not return points.');
       }
+      if (progressEl) {
+        progressEl.textContent = 'Clustering emails...';
+      }
+      console.log('[butter-mail] computeEmbeddings: clustering emails...');
       const clusterRes = await window.electronAPI.embeddings.cluster(res.embeddings, emailIds);
       if (clusterRes.ok) {
         saveCategories({ assignments: clusterRes.assignments, meta: clusterRes.meta });
+        console.log('[butter-mail] computeEmbeddings: clustering complete.');
+      } else {
+        console.warn('[butter-mail] computeEmbeddings: clustering did not return ok.');
       }
     }
-    progressEl.textContent = 'Done.';
+    if (progressEl) {
+      progressEl.textContent = 'Done.';
+    }
+    console.log('[butter-mail] computeEmbeddings: done.');
     updateSubtabBar();
     refreshCurrentView();
   } catch (err) {
-    progressEl.textContent = '';
+    if (progressEl) {
+      progressEl.textContent = '';
+    }
+    console.error('[butter-mail] computeEmbeddings error:', err);
     alert('Error: ' + (err.message || String(err)));
   } finally {
-    btn.disabled = false;
-    setTimeout(() => { progressEl.textContent = ''; }, 2000);
+    if (btn) {
+      btn.disabled = false;
+    }
+    setTimeout(() => {
+      if (progressEl) {
+        progressEl.textContent = '';
+      }
+    }, 2000);
+    console.log('[butter-mail] computeEmbeddings: finished cleanup.');
   }
 }
 
@@ -416,16 +456,6 @@ function refreshCurrentView() {
     renderEmailList(emails);
   } else if (currentView === 'graph') {
     renderGraphView(emails);
-  } else if (currentView === 'timeline') {
-    if (window.TimelineView) {
-      const emailsWithCat = getEmailsWithCategories(emails);
-      window.TimelineView.render('timeline-stacks', emailsWithCat, openEmailDetail, window.getCategoryColor);
-    }
-    ensureTimelineThreadHeaders().then(() => {
-      if (currentView === 'timeline' && window.TimelineView) {
-        window.TimelineView.render('timeline-stacks', getFilteredEmails(), openEmailDetail);
-      }
-    });
   }
 }
 
@@ -497,9 +527,11 @@ async function createPromptCluster() {
   const progressEl = document.getElementById('progress-text');
   progressEl.textContent = 'Loading similarities...';
   try {
+    console.log('[butter-mail] promptCluster: starting scored prompt cluster for', emailIds.length, 'emails with prompt:', prompt);
     const res = await window.electronAPI.embeddings.promptClusterScored(prompt, embeddings, emailIds);
     if (!res.ok) throw new Error(res.error || 'Failed');
     const scored = res.scored || [];
+    console.log('[butter-mail] promptCluster: received', scored.length, 'scored results for prompt:', prompt);
     progressEl.textContent = '';
     btn.disabled = false;
     pendingClusterScored = scored;
@@ -507,6 +539,7 @@ async function createPromptCluster() {
     openClusterThresholdModal(prompt, scored);
   } catch (err) {
     progressEl.textContent = '';
+    console.error('[butter-mail] promptCluster error:', err);
     alert('Error: ' + (err.message || String(err)));
     btn.disabled = false;
   }
@@ -692,6 +725,116 @@ function renderEmailList(emails) {
   }
 
   const cats = getCategories();
+
+  // If timeline view is enabled for the list, render one compact row per thread
+  // with optional expansion (even when in search mode).
+  const canUseTimelineThreads = timelineViewInList && window.TimelineView && typeof window.TimelineView.buildThreads === 'function';
+
+  if (canUseTimelineThreads) {
+    const emailsWithCat = getEmailsWithCategories(sorted);
+    const threads = window.TimelineView.buildThreads(emailsWithCat);
+
+    const parts = [];
+    threads.forEach((thread) => {
+      if (!thread || thread.length === 0) return;
+      const lastEmail = thread[thread.length - 1] || thread[0];
+      const threadId = lastEmail.id;
+      const hasMultiple = thread.length > 1;
+
+      const containsSelected = selectedEmail && thread.some((e) => e.id === selectedEmail.id);
+      if (containsSelected) {
+        expandedThreads.add(threadId);
+      }
+      const isExpanded = hasMultiple && expandedThreads.has(threadId);
+
+      const catMeta = lastEmail.categoryId && cats.meta[lastEmail.categoryId] ? cats.meta[lastEmail.categoryId] : null;
+      const catColor = catMeta && catMeta.color ? catMeta.color : '#B8952E';
+      const catTitle = catMeta && catMeta.name ? catMeta.name : '';
+
+      const threadSubject = lastEmail.subject || '(no subject)';
+      const threadDate = formatDate(lastEmail.date);
+
+      parts.push(
+        '<div class="email-thread-block" data-thread-id="' + escapeHtml(threadId) + '">'
+        + '<div class="email-row email-row-thread' + (hasMultiple ? ' email-row-thread-stacked' : '') + '" data-thread-id="' + escapeHtml(threadId) + '" data-thread-size="' + String(thread.length) + '" data-latest-email-id="' + escapeHtml(lastEmail.id) + '">'
+        + '<span class="email-row-category-square" style="background-color:' + escapeHtml(catColor) + '" title="' + escapeHtml(catTitle) + '" aria-hidden></span>'
+        + '<span class="email-row-subject" style="text-decoration-color:' + escapeHtml(catColor) + '">' + escapeHtml(threadSubject) + '</span>'
+        + '<span class="email-row-date">' + escapeHtml(threadDate) + '</span>'
+        + (hasMultiple ? '<span class="thread-count-badge">+ ' + String(thread.length) + '</span>' : '')
+        + '</div>'
+      );
+
+      if (isExpanded && hasMultiple) {
+        parts.push('<div class="thread-email-list">');
+        thread.forEach((email) => {
+          const eCatMeta = email.categoryId && cats.meta[email.categoryId] ? cats.meta[email.categoryId] : null;
+          const eCatColor = eCatMeta && eCatMeta.color ? eCatMeta.color : '#B8952E';
+          const eCatTitle = eCatMeta && eCatMeta.name ? eCatMeta.name : '';
+          const eSubject = email.subject || '(no subject)';
+          const eDate = formatDate(email.date);
+          const isSelected = selectedEmail && selectedEmail.id === email.id;
+
+          parts.push(
+            '<div class="email-row email-row-in-thread' + (isSelected ? ' selected' : '') + '" data-id="' + escapeHtml(email.id) + '" data-thread-id="' + escapeHtml(threadId) + '">'
+            + '<span class="email-row-category-square" style="background-color:' + escapeHtml(eCatColor) + '" title="' + escapeHtml(eCatTitle) + '" aria-hidden></span>'
+            + '<span class="email-row-subject" style="text-decoration-color:' + escapeHtml(eCatColor) + '">' + escapeHtml(eSubject) + '</span>'
+            + '<span class="email-row-date">' + escapeHtml(eDate) + '</span>'
+            + '</div>'
+          );
+        });
+        parts.push('</div>');
+      }
+
+      parts.push('</div>');
+    });
+
+    listEl.innerHTML = parts.join('');
+
+    // Thread header click: expand/collapse for multi-email threads, or open single-email thread.
+    listEl.querySelectorAll('.email-row-thread').forEach((row) => {
+      row.addEventListener('click', () => {
+        const threadId = row.dataset.threadId;
+        const size = Number(row.dataset.threadSize || '1');
+
+        if (!threadId) return;
+
+        if (size <= 1) {
+          const latestId = row.dataset.latestEmailId;
+          const email = getAllEmails().find((x) => x.id === latestId);
+          if (email) {
+            selectedEmail = email;
+            updateInlineDetail(email);
+            renderEmailList(getFilteredEmails());
+          }
+          return;
+        }
+
+        if (expandedThreads.has(threadId)) {
+          expandedThreads.delete(threadId);
+        } else {
+          expandedThreads.add(threadId);
+        }
+        renderEmailList(getFilteredEmails());
+      });
+    });
+
+    // Email row click inside expanded thread: open that email.
+    listEl.querySelectorAll('.email-row-in-thread').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const email = getAllEmails().find((x) => x.id === row.dataset.id);
+        if (email) {
+          selectedEmail = email;
+          updateInlineDetail(email);
+          renderEmailList(getFilteredEmails());
+        }
+      });
+    });
+
+    return;
+  }
+
+  // Default: flat list (optionally in search mode).
   const emailsWithCat = getEmailsWithCategories(sorted);
   listEl.innerHTML = emailsWithCat
     .map((e) => {
@@ -871,20 +1014,39 @@ document.querySelector('.search-input').addEventListener('input', (e) => {
 
 // --- View tabs ---
 document.querySelectorAll('.view-tab').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.view-tab').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentView = btn.dataset.view;
-      document.getElementById('panel-list').classList.toggle('hidden', currentView !== 'list');
-      document.getElementById('panel-graph').classList.toggle('hidden', currentView !== 'graph');
-      document.getElementById('panel-timeline').classList.toggle('hidden', currentView !== 'timeline');
-      if (currentView !== 'list') {
-        selectedEmail = null;
-        clearInlineDetail();
-      }
-      refreshCurrentView();
-    });
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.view-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    document.getElementById('panel-list').classList.toggle('hidden', currentView !== 'list');
+    document.getElementById('panel-graph').classList.toggle('hidden', currentView !== 'graph');
+    if (currentView !== 'list') {
+      selectedEmail = null;
+      clearInlineDetail();
+    }
+    refreshCurrentView();
   });
+});
+
+// --- List timeline view checkbox ---
+const timelineCheckbox = document.getElementById('timeline-view-checkbox');
+if (timelineCheckbox) {
+  timelineCheckbox.addEventListener('change', () => {
+    timelineViewInList = timelineCheckbox.checked;
+    if (!timelineViewInList) {
+      expandedThreads.clear();
+    }
+    if (timelineViewInList && typeof ensureTimelineThreadHeaders === 'function') {
+      ensureTimelineThreadHeaders().then(() => {
+        if (currentView === 'list' && timelineViewInList) {
+          renderEmailList(getFilteredEmails());
+        }
+      });
+    } else {
+      renderEmailList(getFilteredEmails());
+    }
+  });
+}
 
 // --- Settings ---
 const settingsOverlay = document.getElementById('settings-overlay');

@@ -6,6 +6,7 @@
 const DBSCAN = require('density-clustering').DBSCAN;
 
 const CATEGORY_COLORS = ['#B8952E', '#7B4BA6', '#A8348A', '#2A7B8A', '#4A9B3A', '#9B5A2A'];
+const MIN_AUTO_CLUSTER_EMAILS = 10;
 
 /**
  * Cluster embeddings using DBSCAN.
@@ -22,10 +23,19 @@ function cluster(embeddings, emailIds, eps = 0.6, minPts = 2) {
   }
   const dbscan = new DBSCAN();
   const clusters = dbscan.run(embeddings, eps, minPts);
-  const noise = dbscan.noise || [];
+  const noiseSet = new Set(dbscan.noise || []);
+  const keptClusters = [];
+  clusters.forEach((indices) => {
+    if (indices.length >= MIN_AUTO_CLUSTER_EMAILS) {
+      keptClusters.push(indices);
+    } else {
+      indices.forEach((i) => noiseSet.add(i));
+    }
+  });
+  const noise = Array.from(noiseSet);
   const assignments = {};
   const meta = {};
-  clusters.forEach((indices, clusterIdx) => {
+  keptClusters.forEach((indices, clusterIdx) => {
     const cid = 'cluster-' + clusterIdx;
     meta[cid] = {
       name: 'Cluster ' + (clusterIdx + 1),

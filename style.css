@@ -368,6 +368,25 @@ body {
 }
 
 /* Email list */
+.email-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem 0.25rem;
+}
+
+.timeline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #6B5A2E;
+}
+
+.timeline-toggle input[type="checkbox"] {
+  accent-color: #B8952E;
+}
+
 .email-list {
   display: flex;
   flex-direction: column;
@@ -433,6 +452,64 @@ body {
 .email-row-date {
   font-size: 0.75rem;
   color: #6B5A2E;
+}
+
+.email-thread-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.email-row-thread {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+.email-row-thread-stacked {
+  position: relative;
+  background-color: #fff;
+  z-index: 1;
+}
+
+.email-row-thread-stacked::before,
+.email-row-thread-stacked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  background-color: #fff;
+  border: 1px solid rgba(74, 59, 31, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+}
+
+.email-row-thread-stacked::before {
+  transform: translate(6px, 6px);
+  opacity: 0.45;
+}
+
+.email-row-thread-stacked::after {
+  transform: translate(3px, 3px);
+  opacity: 0.7;
+}
+
+.thread-email-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-left: 1.25rem;
+}
+
+.email-row-in-thread {
+  background-color: #F8F5EE;
+}
+
+.thread-count-badge {
+  font-size: 0.75rem;
+  color: #4A3B1F;
+  background-color: #FEF9C3;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  justify-self: end;
 }
 
 .email-row-search {

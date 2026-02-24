@@ -267,14 +267,24 @@ ipcMain.handle('imap:fetchBodies', async (_, uids) => {
 
 ipcMain.handle('embeddings:compute', async (_, emails) => {
   try {
+    console.log('[butter-mail] embeddings:compute starting for', emails ? emails.length : 0, 'emails');
     const onProgress = (p) => {
+      console.log(
+        '[butter-mail] embeddings:compute progress',
+        p && typeof p.current === 'number' ? p.current : '?',
+        '/',
+        p && typeof p.total === 'number' ? p.total : '?',
+        p && p.message ? p.message : ''
+      );
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('embeddings:progress', p);
       }
     };
     const results = await embeddingsService.computeEmbeddings(emails, onProgress);
+    console.log('[butter-mail] embeddings:compute finished successfully.');
     return { ok: true, embeddings: results };
   } catch (err) {
+    console.error('[butter-mail] embeddings:compute failed:', err);
     return { ok: false, error: err.message || String(err) };
   }
 });
@@ -325,18 +335,24 @@ ipcMain.handle('search:hybrid', async (_, query, emails, embeddings) => {
 
 ipcMain.handle('embeddings:promptCluster', async (_, prompt, embeddings, emailIds, threshold = 0.5) => {
   try {
+    console.log('[butter-mail] embeddings:promptCluster starting. Prompt:', prompt, 'Emails:', emailIds ? emailIds.length : 0, 'Threshold:', threshold);
     const ids = await searchService.emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshold);
+    console.log('[butter-mail] embeddings:promptCluster finished. Matched emails:', ids ? ids.length : 0);
     return { ok: true, emailIds: ids };
   } catch (err) {
+    console.error('[butter-mail] embeddings:promptCluster failed:', err);
     return { ok: false, error: err.message || String(err), emailIds: [] };
   }
 });
 
 ipcMain.handle('embeddings:promptClusterScored', async (_, prompt, embeddings, emailIds) => {
   try {
+    console.log('[butter-mail] embeddings:promptClusterScored starting. Prompt:', prompt, 'Emails:', emailIds ? emailIds.length : 0);
     const scored = await searchService.emailsBySimilarityToPromptScored(prompt, embeddings, emailIds);
+    console.log('[butter-mail] embeddings:promptClusterScored finished. Results:', scored ? scored.length : 0);
     return { ok: true, scored };
   } catch (err) {
+    console.error('[butter-mail] embeddings:promptClusterScored failed:', err);
     return { ok: false, error: err.message || String(err), scored: [] };
   }
 });

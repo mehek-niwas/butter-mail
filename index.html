@@ -35,11 +35,10 @@
             </svg>
             <input type="text" class="search-input" placeholder="search" />
           </div>
-          <!-- View tabs: List | Graph | Timeline -->
+          <!-- View tabs: List | Graph -->
           <div class="view-tabs" id="view-tabs">
             <button type="button" class="view-tab active" data-view="list">List</button>
             <button type="button" class="view-tab" data-view="graph">Graph</button>
-            <button type="button" class="view-tab" data-view="timeline">Timeline</button>
           </div>
 
           <!-- Category subtabs (all | category 1 | category 2 | ...) -->
@@ -62,6 +61,12 @@
           <!-- List view: email list + inline email detail -->
           <div class="content-panel view-panel list-view-layout" id="panel-list">
             <div class="email-list-column">
+              <div class="email-list-toolbar">
+                <label class="timeline-toggle">
+                  <input type="checkbox" id="timeline-view-checkbox" />
+                  <span>Timeline view</span>
+                </label>
+              </div>
               <div class="email-list" id="email-list"></div>
             </div>
             <div class="email-detail-column">
@@ -97,11 +102,6 @@
               <div class="graph-coords-legend" id="graph-coords">X: — Y: — Z: —</div>
               <div class="graph-tooltip hidden" id="graph-tooltip"></div>
             </div>
-          </div>
-
-          <!-- Timeline view (card stacks) -->
-          <div class="content-panel view-panel hidden" id="panel-timeline">
-            <div class="timeline-stacks" id="timeline-stacks"></div>
           </div>
 
           <!-- Settings modal -->
