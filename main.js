@@ -44,6 +44,31 @@ function getSmtpOptions(config) {
   return { host, port, user: config.user, pass: config.pass };
 }
 
+function createImapClient(config) {
+  return new ImapFlow({
+    host: config.host,
+    port: config.port || 993,
+    secure: config.secure !== false,
+    auth: { user: config.user, pass: config.pass },
+    logger: false
+  });
+}
+
+async function safeLogout(client, label) {
+  if (!client) return;
+  try {
+    await client.logout();
+  } catch (err) {
+    console.warn(
+      `[butter-mail] ${label} logout/close failed:`,
+      err && err.message ? err.message : err
+    );
+    try {
+      await client.close();
+    } catch (_) {}
+  }
+}
+
 async function parseEmlFromSource(buffer) {
   if (!buffer) return { from: '', to: '', subject: '(no subject)', date: '', body: '', bodyIsHtml: false, fromEmail: '', toDisplay: '', messageId: '', inReplyTo: '', references: '' };
   try {
@@ -109,49 +134,170 @@ ipcMain.handle('imap:fetch', async (_, limit = 50) => {
     return { ok: false, error: 'IMAP not configured' };
   }
 
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port || 993,
-    secure: config.secure !== false,
-    auth: { user: config.user, pass: config.pass },
-    logger: false
+  const startedAt = Date.now();
+  console.log('[butter-mail] imap:fetch start. limit:', limit, 'host:', config.host);
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:fetch client error:', err);
   });
+
+  async function findSentMailbox() {
+    let mailboxes = [];
+    try {
+      // ImapFlow list() returns an array, not an async iterator
+      mailboxes = await client.list();
+    } catch (err) {
+      console.warn('[butter-mail] imap:fetch findSentMailbox list failed:', err);
+      return null;
+    }
+
+    if (!Array.isArray(mailboxes) || mailboxes.length === 0) return null;
+    console.log('[butter-mail] imap:fetch findSentMailbox mailboxes:', mailboxes.length);
+
+    const hasSentFlag = (box) => {
+      const rawFlags = box && box.flags ? Array.from(box.flags) : [];
+      const flags = rawFlags.map((f) => String(f).toUpperCase());
+      const special = box && box.specialUse ? String(box.specialUse).toUpperCase() : null;
+      return flags.includes('\\SENT') || special === '\\SENT';
+    };
+
+    // 1) Prefer special-use \Sent if advertised
+    const byFlag = mailboxes.find(hasSentFlag);
+    if (byFlag && (byFlag.path || byFlag.name)) {
+      console.log('[butter-mail] imap:fetch findSentMailbox matched by flag:', byFlag.path || byFlag.name);
+      return byFlag.path || byFlag.name;
+    }
+
+    // 2) Fallback: best-effort name match
+    const normalize = (s) => (s || '').toLowerCase();
+    const candidates = mailboxes.map((box) => ({
+      box,
+      name: normalize(box.path || box.name)
+    }));
+
+    const nameEquals = (n, target) => n === target;
+    const nameEndsWith = (n, target) => n.endsWith('/' + target) || n.endsWith('.' + target);
+
+    const namePatterns = [
+      'sent',
+      'sent items',
+      'sent messages',
+      'sent mail'
+    ];
+
+    for (const pattern of namePatterns) {
+      const match = candidates.find(({ name }) => nameEquals(name, pattern) || nameEndsWith(name, pattern));
+      if (match && (match.box.path || match.box.name)) {
+        console.log('[butter-mail] imap:fetch findSentMailbox matched by name:', match.box.path || match.box.name);
+        return match.box.path || match.box.name;
+      }
+    }
+
+    return null;
+  }
 
   try {
     await client.connect();
+    console.log('[butter-mail] imap:fetch connected');
+    const emails = [];
+
+    // --- INBOX ---
     await client.mailboxOpen('INBOX');
     const exists = client.mailbox.exists;
+    console.log('[butter-mail] imap:fetch INBOX opened. exists:', exists);
     if (exists === 0) {
-      await client.logout();
-      return { ok: true, emails: [] };
+      // No inbox messages, but we may still have sent mail
+    } else {
+      const inboxCount = Math.min(limit, exists);
+      const start = Math.max(1, exists - inboxCount + 1);
+      const range = start === inboxCount ? `${start}` : `${start}:${exists}`;
+      console.log('[butter-mail] imap:fetch INBOX fetch range:', range, 'count:', inboxCount);
+
+      for await (const msg of client.fetch(range, { envelope: true })) {
+        const fromAddr = msg.envelope?.from?.[0];
+        const fromStr = fromAddr
+          ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address)
+          : '';
+        emails.push({
+          id: `imap-${msg.uid}`,
+          uid: msg.uid,
+          subject: msg.envelope?.subject || '(no subject)',
+          from: fromStr,
+          date: msg.envelope?.date ? new Date(msg.envelope.date).toISOString() : '',
+          body: '',
+          fromEmail: fromAddr?.address || '',
+          mailbox: 'INBOX'
+        });
+      }
+      console.log('[butter-mail] imap:fetch INBOX fetched:', emails.length);
     }
 
-    const count = Math.min(limit, exists);
-    const start = Math.max(1, exists - count + 1);
-    const range = start === count ? `${start}` : `${start}:${exists}`;
-
-    const emails = [];
-    for await (const msg of client.fetch(range, { envelope: true })) {
-      const fromAddr = msg.envelope?.from?.[0];
-      const fromStr = fromAddr
-        ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address)
-        : '';
-      emails.push({
-        id: `imap-${msg.uid}`,
-        uid: msg.uid,
-        subject: msg.envelope?.subject || '(no subject)',
-        from: fromStr,
-        date: msg.envelope?.date ? new Date(msg.envelope.date).toISOString() : '',
-        body: '',
-        fromEmail: fromAddr?.address || ''
-      });
+    // --- Sent mail (best effort) ---
+    console.log('[butter-mail] imap:fetch findSentMailbox start');
+    const sentMailbox = await findSentMailbox();
+    console.log('[butter-mail] imap:fetch findSentMailbox result:', sentMailbox || '(none)');
+    if (sentMailbox) {
+      try {
+        await client.mailboxOpen(sentMailbox);
+        const sentExists = client.mailbox.exists;
+        console.log('[butter-mail] imap:fetch SENT opened:', sentMailbox, 'exists:', sentExists);
+        if (sentExists > 0) {
+          // Use the same limit for sent so total is up to ~2 * limit
+          const sentCount = Math.min(limit, sentExists);
+          const sentStart = Math.max(1, sentExists - sentCount + 1);
+          const sentRange = sentStart === sentCount ? `${sentStart}` : `${sentStart}:${sentExists}`;
+          console.log('[butter-mail] imap:fetch SENT fetch range:', sentRange, 'count:', sentCount);
+          // For sent items we fetch the full source once so we also get bodies.
+          // Use sequence numbers (like INBOX) instead of UIDs so the 1:exists
+          // range returns all messages in the mailbox.
+          for await (const msg of client.fetch(sentRange, { envelope: true, source: true })) {
+            const fromAddr = msg.envelope?.from?.[0];
+            const fromStr = fromAddr
+              ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address)
+              : '';
+            let parsed = null;
+            try {
+              parsed = await parseEmlFromSource(msg.source);
+            } catch {
+              parsed = null;
+            }
+            emails.push({
+              id: `imap-${msg.uid}`,
+              uid: msg.uid,
+              subject: msg.envelope?.subject || (parsed ? parsed.subject : '(no subject)'),
+              from: fromStr || (parsed ? parsed.from : ''),
+              date: msg.envelope?.date
+                ? new Date(msg.envelope.date).toISOString()
+                : parsed && parsed.date
+                ? parsed.date
+                : '',
+              body: parsed ? parsed.body : '',
+              bodyIsHtml: parsed ? parsed.bodyIsHtml : false,
+              fromEmail: fromAddr?.address || (parsed ? parsed.fromEmail : ''),
+              toDisplay: parsed ? parsed.toDisplay : '',
+              messageId: parsed && parsed.messageId ? parsed.messageId : '',
+              inReplyTo: parsed && parsed.inReplyTo ? parsed.inReplyTo : '',
+              references: parsed && parsed.references ? parsed.references : '',
+              mailbox: sentMailbox,
+              isSent: true
+            });
+          }
+          console.log('[butter-mail] imap:fetch SENT fetched. total emails now:', emails.length);
+        }
+      } catch (err) {
+        // If we can't open or read the sent mailbox, just skip it.
+        console.warn('[butter-mail] imap:fetch could not read sent mailbox:', sentMailbox, err);
+      }
     }
 
-    await client.logout();
+    console.log('[butter-mail] imap:fetch success. emails:', emails.length, 'ms:', Date.now() - startedAt);
     return { ok: true, emails };
   } catch (err) {
     const detail = err.response || err.responseCode || err.code || '';
+    console.error('[butter-mail] imap:fetch failed:', err);
     return { ok: false, error: err.message + (detail ? ` (${detail})` : '') };
+  } finally {
+    await safeLogout(client, 'imap:fetch');
   }
 });
 
@@ -161,12 +307,9 @@ ipcMain.handle('imap:fetchOne', async (_, uid) => {
     return { ok: false, error: 'IMAP not configured' };
   }
 
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port || 993,
-    secure: config.secure !== false,
-    auth: { user: config.user, pass: config.pass },
-    logger: false
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:fetchOne client error:', err);
   });
 
   try {
@@ -191,10 +334,11 @@ ipcMain.handle('imap:fetchOne', async (_, uid) => {
         references: parsed.references || ''
       };
     }
-    await client.logout();
     return { ok: true, email };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
+  } finally {
+    await safeLogout(client, 'imap:fetchOne');
   }
 });
 
@@ -204,20 +348,15 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
     return { ok: true, headers: {} };
   }
   console.log('[butter-mail] timeline: fetchThreadHeaders starting for', uids.length, 'uids');
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port || 993,
-    secure: config.secure !== false,
-    auth: { user: config.user, pass: config.pass },
-    logger: false
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:fetchThreadHeaders client error:', err);
   });
   try {
     await client.connect();
     await client.mailboxOpen('INBOX');
     const headers = {};
-    const maxUids = Math.min(uids.length, 300);
-    for (let i = 0; i < maxUids; i++) {
-      const uid = uids[i];
+    for (const uid of uids) {
       try {
         const msg = await client.fetchOne(String(uid), { source: { start: 0, maxLength: 8192 } }, { uid: true });
         if (msg && msg.source) {
@@ -230,11 +369,12 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
         }
       } catch (_) {}
     }
-    await client.logout();
     console.log('[butter-mail] timeline: fetchThreadHeaders done. headers:', Object.keys(headers).length);
     return { ok: true, headers };
   } catch (err) {
     return { ok: false, error: err.message || String(err), headers: {} };
+  } finally {
+    await safeLogout(client, 'imap:fetchThreadHeaders');
   }
 });
 
@@ -243,12 +383,9 @@ ipcMain.handle('imap:fetchBodies', async (_, uids) => {
   if (!config || !config.host || !config.user || !config.pass || !uids || uids.length === 0) {
     return { ok: true, bodies: {} };
   }
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port || 993,
-    secure: config.secure !== false,
-    auth: { user: config.user, pass: config.pass },
-    logger: false
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:fetchBodies client error:', err);
   });
   try {
     await client.connect();
@@ -261,10 +398,11 @@ ipcMain.handle('imap:fetchBodies', async (_, uids) => {
         bodies[uid] = { body: parsed.body, bodyIsHtml: parsed.bodyIsHtml };
       }
     }
-    await client.logout();
     return { ok: true, bodies };
   } catch (err) {
     return { ok: false, error: err.message || String(err), bodies: {} };
+  } finally {
+    await safeLogout(client, 'imap:fetchBodies');
   }
 });
 
@@ -397,20 +535,18 @@ ipcMain.handle('smtp:send', async (_, { to, subject, text, html, replyToMessageI
 });
 
 ipcMain.handle('imap:test', async (_, config) => {
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port || 993,
-    secure: config.secure !== false,
-    auth: { user: config.user, pass: config.pass },
-    logger: false
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:test client error:', err);
   });
 
   try {
     await client.connect();
     await client.mailboxOpen('INBOX');
-    await client.logout();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
+  } finally {
+    await safeLogout(client, 'imap:test');
   }
 });

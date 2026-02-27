@@ -173,6 +173,7 @@ let searchResults = null;
 let selectedEmail = null;
 let timelineViewInList = false;
 const expandedThreads = new Set();
+let isFetchingFromImap = false;
 
 function getFilteredEmails() {
   let emails = searchResults !== null ? searchResults : getAllEmails();
@@ -724,7 +725,9 @@ let timelineHeadersLoaded = false;
 
 async function ensureTimelineThreadHeaders() {
   if (typeof window.electronAPI === 'undefined' || timelineHeadersLoaded) return;
-  const imapWithoutThread = imapEmails.filter((e) => !e.messageId && e.uid);
+  const imapWithoutThread = imapEmails.filter(
+    (e) => !e.messageId && e.uid && (!e.mailbox || e.mailbox === 'INBOX')
+  );
   if (imapWithoutThread.length === 0) {
     timelineHeadersLoaded = true;
     return;
@@ -862,20 +865,40 @@ function renderGraphView(emails) {
 // --- Fetch IMAP ---
 async function fetchFromImap() {
   if (typeof window.electronAPI === 'undefined') return;
+  if (isFetchingFromImap) {
+    console.log('[butter-mail] refresh: skipped (already fetching)');
+    return;
+  }
+  isFetchingFromImap = true;
   const btn = document.getElementById('refresh-btn');
-  btn.classList.add('loading');
-  btn.disabled = true;
+  console.log('[butter-mail] refresh: start');
+  if (btn) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+  } else {
+    console.warn('[butter-mail] refresh: refresh button element not found');
+  }
   try {
+    console.log('[butter-mail] refresh: calling main imap.fetch(limit=800)');
     const result = await window.electronAPI.imap.fetch(800);
     if (result.ok) {
+      console.log('[butter-mail] refresh: ok. emails:', Array.isArray(result.emails) ? result.emails.length : 0);
       imapEmails = result.emails;
       timelineHeadersLoaded = false;
-    } else if (!result.error.includes('not configured')) alert('IMAP error: ' + (result.error || 'Unknown'));
+    } else if (!result.error.includes('not configured')) {
+      const message = result.error || 'Unknown';
+      console.error('[butter-mail] IMAP refresh failed:', message);
+      alert('IMAP refresh failed: ' + message);
+    }
     refreshCurrentView();
     updateSubtabBar();
   } finally {
-    btn.classList.remove('loading');
-    btn.disabled = false;
+    isFetchingFromImap = false;
+    console.log('[butter-mail] refresh: end');
+    if (btn) {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
   }
 }
 
@@ -922,7 +945,10 @@ async function recluster() {
   }
 }
 
-document.getElementById('refresh-btn').addEventListener('click', fetchFromImap);
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  console.log('[butter-mail] refresh button: clicked');
+  fetchFromImap();
+});
 document.getElementById('compute-embeddings-btn').addEventListener('click', computeEmbeddings);
 document.getElementById('recluster-btn').addEventListener('click', recluster);
 
@@ -1602,6 +1628,14 @@ composeForm.addEventListener('submit', async (e) => {
     composeStatus.textContent = 'Sent.';
     composeStatus.className = 'compose-status success';
     composeForm.reset();
+    // After a successful send, refresh from IMAP so the new sent email appears
+    try {
+      if (typeof window.electronAPI !== 'undefined' && window.electronAPI.imap && typeof fetchFromImap === 'function') {
+        await fetchFromImap();
+      }
+    } catch (err) {
+      console.error('[butter-mail] auto-refresh after send failed:', err);
+    }
     setTimeout(closeCompose, 1200);
   } else {
     composeStatus.textContent = result.error || 'Send failed.';
