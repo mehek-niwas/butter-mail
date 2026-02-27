@@ -21,9 +21,9 @@
           </h1>
           <p class="welcome">welcome to your spread, mehek!</p>
           <nav class="nav-buttons">
-            <button type="button" class="nav-btn active" data-tab="views">views</button>
             <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">&#9881;</button>
           </nav>
+          <div class="categories-list" id="subtab-bar"></div>
         </aside>
 
         <main class="main">
@@ -41,16 +41,12 @@
             <button type="button" class="view-tab" data-view="graph">Graph</button>
           </div>
 
-          <!-- Category subtabs (all | category 1 | category 2 | ...) -->
-          <div class="subtab-bar" id="subtab-bar">
-            <button type="button" class="subtab-btn active" data-subtab="all">all</button>
-          </div>
-
           <!-- Import + Compose + Compute embeddings + Create cluster -->
           <div class="import-section" id="import-section">
             <button type="button" class="compose-btn" id="compose-btn" title="New email">&#9993; compose</button>
             <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">&#8635; refresh</button>
             <button type="button" class="compute-embeddings-btn" id="compute-embeddings-btn" title="Compute embeddings, PCA and categories">compute embeddings</button>
+            <button type="button" class="recluster-btn" id="recluster-btn" title="Re-run DBSCAN clustering (keeps your prompt clusters)">re-cluster</button>
             <div class="prompt-cluster-row">
               <input type="text" id="prompt-cluster-input" class="prompt-cluster-input" placeholder="Create cluster from prompt (e.g. application)" />
               <button type="button" class="prompt-cluster-btn" id="prompt-cluster-btn" title="Create a cluster of emails matching this prompt">create cluster</button>
@@ -145,6 +141,23 @@
                 <button type="button" class="settings-save" id="cluster-threshold-create">Create cluster</button>
                 <button type="button" class="subtab-btn" id="cluster-threshold-cancel">Cancel</button>
               </div>
+            </div>
+          </div>
+
+          <!-- Cluster rename modal -->
+          <div class="email-detail-overlay hidden" id="cluster-rename-overlay">
+            <div class="email-detail-panel settings-panel cluster-rename-panel">
+              <button type="button" class="email-detail-close" id="cluster-rename-close">&#215;</button>
+              <h2 class="settings-title" id="cluster-rename-title">Rename cluster</h2>
+              <p class="settings-hint" id="cluster-rename-hint">Give this cluster a new name.</p>
+              <form class="settings-form" id="cluster-rename-form">
+                <label for="cluster-rename-input">Name</label>
+                <input type="text" id="cluster-rename-input" name="cluster-name" />
+                <div class="settings-actions">
+                  <button type="button" class="subtab-btn" id="cluster-rename-cancel">Cancel</button>
+                  <button type="submit" class="settings-save" id="cluster-rename-save">Save</button>
+                </div>
+              </form>
             </div>
           </div>
 

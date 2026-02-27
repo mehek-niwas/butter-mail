@@ -203,6 +203,7 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
   if (!config || !config.host || !config.user || !config.pass || !uids || uids.length === 0) {
     return { ok: true, headers: {} };
   }
+  console.log('[butter-mail] timeline: fetchThreadHeaders starting for', uids.length, 'uids');
   const client = new ImapFlow({
     host: config.host,
     port: config.port || 993,
@@ -230,6 +231,7 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
       } catch (_) {}
     }
     await client.logout();
+    console.log('[butter-mail] timeline: fetchThreadHeaders done. headers:', Object.keys(headers).length);
     return { ok: true, headers };
   } catch (err) {
     return { ok: false, error: err.message || String(err), headers: {} };
@@ -295,9 +297,11 @@ ipcMain.handle('embeddings:pca', async (_, embeddings, emailIds) => {
     const matrix = emailIds.map((id) => embeddings[id]).filter(Boolean);
     const ids = emailIds.filter((id) => embeddings[id]);
     if (matrix.length === 0) return { ok: true, points: [], model: null };
+    console.log('[butter-mail] PCA (graph view): fitting and projecting', ids.length, 'points to 3D');
     const { points, model } = pcaUtils.fitAndProject(matrix, 3);
     const pointMap = {};
     ids.forEach((id, i) => { pointMap[id] = points[i]; });
+    console.log('[butter-mail] PCA (graph view): done.');
     return { ok: true, points: pointMap, model };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
@@ -309,7 +313,9 @@ ipcMain.handle('embeddings:cluster', async (_, embeddings, emailIds) => {
     const matrix = emailIds.map((id) => embeddings[id]).filter(Boolean);
     const ids = emailIds.filter((id) => embeddings[id]);
     if (matrix.length === 0) return { ok: true, assignments: {}, meta: {} };
+    console.log('[butter-mail] clustering: running DBSCAN on', ids.length, 'emails');
     const { assignments, meta } = clustering.cluster(matrix, ids);
+    console.log('[butter-mail] clustering: done.');
     return { ok: true, assignments, meta };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };

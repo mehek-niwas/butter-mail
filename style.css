@@ -280,45 +280,88 @@ body {
   background-color: #E07ACD;
 }
 
-.category-title {
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-/* Subtab bar */
-.subtab-bar {
+.categories-list {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  flex-direction: column;
+  padding: 0.25rem 0;
+  margin-top: 0.5rem;
 }
 
-.subtab-btn {
-  padding: 0.4rem 0.75rem;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.8rem;
+.categories-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
   cursor: pointer;
-  background-color: #EBD98E;
+  font-size: 0.875rem;
   color: #4A3B1F;
 }
 
-.subtab-btn:hover {
+.categories-option:hover {
+  background-color: #EBD98E;
+}
+
+.categories-option.active {
   background-color: #E5C94A;
 }
 
-.subtab-btn.active {
-  background-color: #E5C94A;
+.categories-option-swatch {
+  flex-shrink: 0;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.2rem;
 }
 
-.subtab-wrap {
-  display: inline-flex;
-  align-items: center;
-  position: relative;
+.categories-option-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.subtab-delete {
-  margin-left: -0.25rem;
-  padding: 0.15rem 0.3rem;
+.categories-option-type {
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.categories-option-type-user {
+  background-color: rgba(200, 155, 230, 0.25);
+}
+
+.categories-option-type-auto {
+  background-color: rgba(229, 201, 74, 0.25);
+}
+
+.categories-option-actions {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.categories-option-handle {
+  flex-shrink: 0;
+  padding: 0.15rem 0.25rem;
+  border: none;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  cursor: grab;
+  background: transparent;
+  color: #4A3B1F;
+  opacity: 0.5;
+}
+
+.categories-option-handle:hover {
+  opacity: 0.9;
+}
+
+.categories-option-move,
+.categories-option-rename,
+.categories-option-delete {
+  flex-shrink: 0;
+  padding: 0.15rem 0.35rem;
   border: none;
   border-radius: 0.25rem;
   font-size: 0.9rem;
@@ -329,9 +372,17 @@ body {
   opacity: 0.5;
 }
 
-.subtab-delete:hover {
+.categories-option-delete:hover {
   opacity: 1;
-  background-color: rgba(0, 0, 0, 0.12);
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+.categories-option.drag-over {
+  background-color: #EBD98E;
+}
+
+.categories-option.dragging {
+  opacity: 0.6;
 }
 
 .hidden {
@@ -670,6 +721,11 @@ body {
   max-width: 28rem;
 }
 
+.cluster-rename-panel {
+  min-width: 18rem;
+  max-width: 24rem;
+}
+
 .cluster-results-list {
   max-height: 14rem;
   overflow-y: auto;
@@ -868,6 +924,26 @@ body {
 }
 
 .compute-embeddings-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Re-cluster (DBSCAN only) */
+.recluster-btn {
+  padding: 0.5rem 1rem;
+  background-color: #9BAB7B;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: #4A3B1F;
+}
+
+.recluster-btn:hover {
+  background-color: #8A9A6B;
+}
+
+.recluster-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
