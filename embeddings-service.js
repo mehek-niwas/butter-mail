@@ -4,6 +4,9 @@
  * No LLM APIs - fully offline/privacy-first.
  */
 
+const path = require('path');
+const { app } = require('electron');
+
 /** Strip HTML tags and decode entities for plain text extraction */
 function stripHtml(html) {
   if (!html || typeof html !== 'string') return '';
@@ -35,7 +38,20 @@ let pipeline = null;
 
 async function getPipeline() {
   if (pipeline) return pipeline;
-  const { pipeline: createPipeline } = await import('@huggingface/transformers');
+  const { pipeline: createPipeline, env } = await import('@huggingface/transformers');
+
+  // Ensure cache is stored in a writable per-user location (outside app.asar)
+  try {
+    if (env && (env.cacheDir == null || env.cacheDir === './.cache')) {
+      const cacheDir = path.join(app.getPath('userData'), 'transformers-cache');
+      env.cacheDir = cacheDir;
+      env.useFSCache = true;
+      env.useBrowserCache = false;
+    }
+  } catch (_) {
+    // If anything goes wrong configuring cache, fall back to library defaults.
+  }
+
   pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
     device: 'auto',
     dtype: 'fp32'

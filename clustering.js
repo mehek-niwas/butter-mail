@@ -6,7 +6,7 @@
 const DBSCAN = require('density-clustering').DBSCAN;
 
 const CATEGORY_COLORS = ['#B8952E', '#7B4BA6', '#A8348A', '#2A7B8A', '#4A9B3A', '#9B5A2A'];
-const MIN_AUTO_CLUSTER_EMAILS = 10;
+const MIN_AUTO_CLUSTER_EMAILS = 5;
 
 /**
  * Cluster embeddings using DBSCAN.
