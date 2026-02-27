@@ -238,6 +238,10 @@ async function computeEmbeddings() {
     }
   }
 
+  if (typeof ensureTimelineThreadHeaders === 'function') {
+    await ensureTimelineThreadHeaders();
+  }
+
   const progressEl = document.getElementById('progress-text');
   const btn = document.getElementById('compute-embeddings-btn');
   if (progressEl) {
@@ -265,31 +269,35 @@ async function computeEmbeddings() {
     saveEmbeddings(res.embeddings);
     console.log('[butter-mail] computeEmbeddings: embeddings computed and saved for', Object.keys(res.embeddings || {}).length, 'emails');
 
-    const emailIds = Object.keys(res.embeddings);
-    if (emailIds.length > 0) {
+    const allEmailIds = Object.keys(res.embeddings);
+    if (allEmailIds.length > 0) {
       if (progressEl) {
         progressEl.textContent = 'Running PCA...';
       }
-      console.log('[butter-mail] computeEmbeddings: running PCA for', emailIds.length, 'emails');
-      const pcaRes = await window.electronAPI.embeddings.pca(res.embeddings, emailIds);
+      console.log('[butter-mail] PCA (graph view): running for', allEmailIds.length, 'emails');
+      const pcaRes = await window.electronAPI.embeddings.pca(res.embeddings, allEmailIds);
       if (pcaRes.ok && pcaRes.points) {
         pcaPoints = pcaRes.points;
         savePcaModel(pcaRes.model);
         savePcaPoints(pcaPoints);
-        console.log('[butter-mail] computeEmbeddings: PCA complete.');
+        console.log('[butter-mail] PCA (graph view): complete.');
       } else {
-        console.warn('[butter-mail] computeEmbeddings: PCA did not return points.');
+        console.warn('[butter-mail] PCA (graph view): did not return points.');
       }
-      if (progressEl) {
-        progressEl.textContent = 'Clustering emails...';
-      }
-      console.log('[butter-mail] computeEmbeddings: clustering emails...');
-      const clusterRes = await window.electronAPI.embeddings.cluster(res.embeddings, emailIds);
-      if (clusterRes.ok) {
-        saveCategories({ assignments: clusterRes.assignments, meta: clusterRes.meta });
-        console.log('[butter-mail] computeEmbeddings: clustering complete.');
-      } else {
-        console.warn('[butter-mail] computeEmbeddings: clustering did not return ok.');
+      const { repIds, repToMembers } = buildThreadRepsForClustering(emails, res.embeddings);
+      if (repIds.length > 0) {
+        if (progressEl) {
+          progressEl.textContent = 'Clustering emails...';
+        }
+        console.log('[butter-mail] clustering: starting for', repIds.length, 'thread representatives');
+        const clusterRes = await window.electronAPI.embeddings.cluster(res.embeddings, repIds);
+        if (clusterRes.ok) {
+          const expanded = expandClusterAssignmentsToThreads(clusterRes, repToMembers, res.embeddings);
+          saveCategories(expanded);
+          console.log('[butter-mail] clustering: complete.');
+        } else {
+          console.warn('[butter-mail] clustering: did not return ok.');
+        }
       }
     }
     if (progressEl) {
@@ -317,82 +325,250 @@ async function computeEmbeddings() {
   }
 }
 
-// --- Subtab bar ---
+// --- Cluster tabs in sidebar ---
+let draggingCluster = null;
+let pendingClusterRename = null;
+
 function updateSubtabBar() {
-  const bar = document.getElementById('subtab-bar');
-  if (!bar) return;
+  const listEl = document.getElementById('subtab-bar');
+  if (!listEl) return;
   const cats = getCategories();
-  const ids = Object.keys(cats.meta || {}).filter((k) => k !== 'noise').sort();
   const promptClusters = getPromptClusters();
-  const promptSlugs = Object.keys(promptClusters).sort();
+  const promptEntries = Object.entries(promptClusters || {}).sort((a, b) => {
+    const [slugA, clusterA] = a;
+    const [slugB, clusterB] = b;
+    const orderA = typeof clusterA.order === 'number' ? clusterA.order : Number.MAX_SAFE_INTEGER;
+    const orderB = typeof clusterB.order === 'number' ? clusterB.order : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    const ca = clusterA.createdAt || '';
+    const cb = clusterB.createdAt || '';
+    if (ca && cb && ca !== cb) return ca.localeCompare(cb);
+    return slugA.localeCompare(slugB);
+  });
+  const catIds = Object.keys(cats.meta || {}).filter((k) => k !== 'noise').sort((a, b) => {
+    const ma = cats.meta[a] || {};
+    const mb = cats.meta[b] || {};
+    const orderA = typeof ma.order === 'number' ? ma.order : Number.MAX_SAFE_INTEGER;
+    const orderB = typeof mb.order === 'number' ? mb.order : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.localeCompare(b);
+  });
 
   const activeTab = currentFilter;
-  let html = '<button type="button" class="subtab-btn' + (activeTab === 'all' ? ' active' : '') + '" data-subtab="all">all</button>';
-  ids.forEach((cid) => {
-    const meta = cats.meta[cid];
-    const name = meta && meta.name ? meta.name : cid;
-    const isActive = activeTab === cid;
-    html += '<span class="subtab-wrap">' +
-      '<button type="button" class="subtab-btn' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(cid) + '" data-category-id="' + escapeHtml(cid) + '">' + escapeHtml(name) + '</button>' +
-      '<button type="button" class="subtab-delete" data-delete-category="' + escapeHtml(cid) + '" title="Delete category" aria-label="Delete category">&#215;</button>' +
-      '</span>';
-  });
-  promptSlugs.forEach((slug) => {
-    const cluster = promptClusters[slug];
+  let html = '';
+  html += '<div class="categories-option categories-option-all' + (activeTab === 'all' ? ' active' : '') + '" data-subtab="all" role="option"><span class="categories-option-label">all</span></div>';
+
+  // User-defined prompt clusters (initially rendered first; drag-and-drop can mix)
+  promptEntries.forEach(([slug, cluster]) => {
     const label = cluster && cluster.label ? cluster.label : slug;
     const tabId = 'prompt-' + slug;
     const isActive = activeTab === tabId;
-    html += '<span class="subtab-wrap">' +
-      '<button type="button" class="subtab-btn subtab-prompt' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(tabId) + '">' + escapeHtml(label) + '</button>' +
-      '<button type="button" class="subtab-delete" data-delete-prompt="' + escapeHtml(slug) + '" title="Delete cluster" aria-label="Delete cluster">&#215;</button>' +
-      '</span>';
+    html += '<div class="categories-option categories-option-prompt' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(tabId) + '" data-prompt-slug="' + escapeHtml(slug) + '" role="option">' +
+      '<span class="categories-option-label">' + escapeHtml(label) + '</span>' +
+      '<div class="categories-option-actions">' +
+      '<button type="button" class="categories-option-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</button>' +
+      '<span class="categories-option-type categories-option-type-user">user</span>' +
+      '<button type="button" class="categories-option-rename" data-rename-prompt="' + escapeHtml(slug) + '" title="Rename cluster" aria-label="Rename cluster">&#9998;</button>' +
+      '<button type="button" class="categories-option-delete" data-delete-prompt="' + escapeHtml(slug) + '" title="Delete cluster" aria-label="Delete cluster">&#215;</button>' +
+      '</div>' +
+      '</div>';
   });
-  bar.innerHTML = html;
 
-  ids.forEach((cid) => {
-    const btn = bar.querySelector('[data-subtab="' + cid + '"]');
-    if (btn) btn.addEventListener('dblclick', () => renameCategory(cid, btn));
+  // Auto DBSCAN clusters after user-defined
+  catIds.forEach((cid) => {
+    const meta = cats.meta[cid];
+    const name = meta && meta.name ? meta.name : cid;
+    const color = meta && meta.color ? meta.color : '#B8952E';
+    const isActive = activeTab === cid;
+    html += '<div class="categories-option subtab-btn-category' + (isActive ? ' active' : '') + '" data-subtab="' + escapeHtml(cid) + '" data-category-id="' + escapeHtml(cid) + '" role="option" style="--cat-color:' + escapeHtml(color) + '">' +
+      '<span class="categories-option-swatch" style="background-color:' + escapeHtml(color) + '"></span>' +
+      '<span class="categories-option-label">' + escapeHtml(name) + '</span>' +
+      '<div class="categories-option-actions">' +
+      '<button type="button" class="categories-option-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</button>' +
+      '<span class="categories-option-type categories-option-type-auto">auto</span>' +
+      '<button type="button" class="categories-option-rename" data-rename-category="' + escapeHtml(cid) + '" title="Rename category" aria-label="Rename category">&#9998;</button>' +
+      '<button type="button" class="categories-option-delete" data-delete-category="' + escapeHtml(cid) + '" title="Delete category" aria-label="Delete category">&#215;</button>' +
+      '</div>' +
+      '</div>';
+  });
+  listEl.innerHTML = html;
+
+  catIds.forEach((cid) => {
+    const row = listEl.querySelector('[data-subtab="' + cid + '"]');
+    if (row) row.addEventListener('dblclick', () => renameCategory(cid));
   });
 
-  bar.querySelectorAll('.subtab-delete[data-delete-category]').forEach((delBtn) => {
+  listEl.querySelectorAll('.categories-option-delete[data-delete-category]').forEach((delBtn) => {
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteCategory(delBtn.dataset.deleteCategory);
     });
   });
-  bar.querySelectorAll('.subtab-delete[data-delete-prompt]').forEach((delBtn) => {
+  listEl.querySelectorAll('.categories-option-delete[data-delete-prompt]').forEach((delBtn) => {
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       deletePromptCluster(delBtn.dataset.deletePrompt);
     });
   });
 
-  bar.querySelectorAll('.subtab-btn').forEach((b) => {
-    b.addEventListener('click', () => {
-      bar.querySelectorAll('.subtab-btn').forEach((x) => x.classList.remove('active'));
-      b.classList.add('active');
-      currentFilter = b.dataset.subtab;
+  listEl.querySelectorAll('.categories-option-move[data-prompt-slug]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slug = btn.dataset.promptSlug;
+      const dir = btn.dataset.move === 'up' ? 'up' : 'down';
+      movePromptCluster(slug, dir);
+    });
+  });
+
+  listEl.querySelectorAll('.categories-option-rename[data-rename-prompt]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slug = btn.dataset.renamePrompt;
+      renamePromptCluster(slug);
+    });
+  });
+
+  listEl.querySelectorAll('.categories-option-rename[data-rename-category]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const catId = btn.dataset.renameCategory;
+      renameCategory(catId);
+    });
+  });
+
+  listEl.querySelectorAll('.categories-option').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.categories-option-delete')) return;
+      listEl.querySelectorAll('.categories-option').forEach((x) => x.classList.remove('active'));
+      row.classList.add('active');
+      currentFilter = row.dataset.subtab;
       refreshCurrentView();
     });
-    if (b.dataset.subtab && b.dataset.subtab.startsWith('prompt-')) {
-      const slug = b.dataset.subtab.slice(7);
-      b.addEventListener('dblclick', (e) => {
+    if (row.dataset.subtab && row.dataset.subtab.startsWith('prompt-')) {
+      const slug = row.dataset.subtab.slice(7);
+      row.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.categories-option-delete')) return;
         e.preventDefault();
         openClusterThresholdModalForEdit(slug);
       });
     }
   });
+
+  setupClusterDragAndDrop(listEl);
 }
 
-function renameCategory(catId, btnEl) {
-  const name = prompt('Rename category:', btnEl.textContent);
-  if (name === null || !name.trim()) return;
-  const cats = getCategories();
-  if (cats.meta[catId]) {
-    cats.meta[catId].name = name.trim();
-    saveCategories(cats);
-    btnEl.textContent = name.trim();
+function setupClusterDragAndDrop(listEl) {
+  listEl.querySelectorAll('.categories-option').forEach((row) => {
+    const subtab = row.dataset.subtab;
+    if (!subtab || subtab === 'all') return;
+    row.setAttribute('draggable', 'true');
+    row.addEventListener('dragstart', (e) => {
+      draggingCluster = { subtab };
+      row.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+      }
+    });
+    row.addEventListener('dragend', () => {
+      draggingCluster = null;
+      row.classList.remove('dragging');
+      listEl.querySelectorAll('.categories-option').forEach((r) => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', (e) => {
+      if (!draggingCluster) return;
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+      }
+      listEl.querySelectorAll('.categories-option').forEach((r) => r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('drop', (e) => {
+      if (!draggingCluster) return;
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const fromSubtab = draggingCluster.subtab;
+      const toSubtab = subtab;
+      if (fromSubtab && toSubtab && fromSubtab !== toSubtab) {
+        reorderClusters(fromSubtab, toSubtab);
+      }
+      draggingCluster = null;
+    });
+  });
+}
+
+function setupClusterRenameModal() {
+  const overlay = document.getElementById('cluster-rename-overlay');
+  const form = document.getElementById('cluster-rename-form');
+  const input = document.getElementById('cluster-rename-input');
+  const cancelBtn = document.getElementById('cluster-rename-cancel');
+  const closeBtn = document.getElementById('cluster-rename-close');
+  const titleEl = document.getElementById('cluster-rename-title');
+  if (!overlay || !form || !input || !cancelBtn || !closeBtn || !titleEl) return;
+
+  function close() {
+    overlay.classList.add('hidden');
+    pendingClusterRename = null;
+    form.reset();
   }
+
+  cancelBtn.onclick = close;
+  closeBtn.onclick = close;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!pendingClusterRename) {
+      close();
+      return;
+    }
+    const name = input.value.trim();
+    if (!name) {
+      close();
+      return;
+    }
+    if (pendingClusterRename.type === 'prompt') {
+      const clusters = getPromptClusters();
+      const cluster = clusters[pendingClusterRename.id];
+      if (cluster) {
+        cluster.label = name;
+        savePromptClusters(clusters);
+      }
+    } else if (pendingClusterRename.type === 'category') {
+      const cats = getCategories();
+      if (cats.meta[pendingClusterRename.id]) {
+        cats.meta[pendingClusterRename.id].name = name;
+        saveCategories(cats);
+      }
+    }
+    close();
+    updateSubtabBar();
+    refreshCurrentView();
+  });
+}
+
+function openClusterRenameModal(type, id, currentName) {
+  const overlay = document.getElementById('cluster-rename-overlay');
+  const input = document.getElementById('cluster-rename-input');
+  const titleEl = document.getElementById('cluster-rename-title');
+  if (!overlay || !input || !titleEl) return;
+  pendingClusterRename = { type, id };
+  titleEl.textContent = type === 'prompt' ? 'Rename cluster' : 'Rename category';
+  input.value = currentName || '';
+  overlay.classList.remove('hidden');
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 0);
+}
+
+function renameCategory(catId) {
+  const cats = getCategories();
+  if (!cats.meta[catId]) return;
+  const currentName = cats.meta[catId].name || catId;
+  openClusterRenameModal('category', catId, currentName);
 }
 
 function deleteCategory(catId) {
@@ -411,6 +587,90 @@ function deleteCategory(catId) {
   refreshCurrentView();
 }
 
+function reorderCategoryClusters(fromId, toId) {
+  const cats = getCategories();
+  const meta = cats.meta || {};
+  if (!meta[fromId] || !meta[toId]) return;
+  const ids = Object.keys(meta).filter((k) => k !== 'noise').sort((a, b) => {
+    const ma = meta[a] || {};
+    const mb = meta[b] || {};
+    const orderA = typeof ma.order === 'number' ? ma.order : Number.MAX_SAFE_INTEGER;
+    const orderB = typeof mb.order === 'number' ? mb.order : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.localeCompare(b);
+  });
+  const fromIndex = ids.indexOf(fromId);
+  const toIndex = ids.indexOf(toId);
+  if (fromIndex === -1 || toIndex === -1) return;
+  const [item] = ids.splice(fromIndex, 1);
+  const insertIndex = fromIndex < toIndex ? toIndex : toIndex;
+  ids.splice(insertIndex, 0, item);
+  ids.forEach((id, idx) => {
+    if (meta[id]) meta[id].order = idx;
+  });
+  saveCategories(cats);
+  updateSubtabBar();
+}
+
+function reorderClusters(fromSubtab, toSubtab) {
+  const cats = getCategories();
+  const promptClusters = getPromptClusters();
+  const entries = [];
+
+  Object.entries(promptClusters || {}).forEach(([slug, cluster]) => {
+    entries.push({
+      type: 'prompt',
+      subtab: 'prompt-' + slug,
+      id: slug,
+      order: typeof cluster.order === 'number' ? cluster.order : Number.MAX_SAFE_INTEGER,
+      createdAt: cluster.createdAt || ''
+    });
+  });
+
+  Object.keys(cats.meta || {}).forEach((cid) => {
+    if (cid === 'noise') return;
+    const meta = cats.meta[cid] || {};
+    entries.push({
+      type: 'category',
+      subtab: cid,
+      id: cid,
+      order: typeof meta.order === 'number' ? meta.order : Number.MAX_SAFE_INTEGER,
+      createdAt: meta.createdAt || ''
+    });
+  });
+
+  if (entries.length === 0) return;
+
+  entries.sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    if (a.createdAt && b.createdAt && a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
+    return String(a.subtab).localeCompare(String(b.subtab));
+  });
+
+  const fromIndex = entries.findIndex((e) => e.subtab === fromSubtab);
+  const toIndex = entries.findIndex((e) => e.subtab === toSubtab);
+  if (fromIndex === -1 || toIndex === -1) return;
+
+  const [item] = entries.splice(fromIndex, 1);
+  const insertIndex = fromIndex < toIndex ? toIndex : toIndex;
+  entries.splice(insertIndex, 0, item);
+
+  entries.forEach((entry, idx) => {
+    if (entry.type === 'prompt') {
+      if (promptClusters[entry.id]) {
+        promptClusters[entry.id].order = idx;
+      }
+    } else if (entry.type === 'category') {
+      if (!cats.meta[entry.id]) cats.meta[entry.id] = {};
+      cats.meta[entry.id].order = idx;
+    }
+  });
+
+  savePromptClusters(promptClusters);
+  saveCategories(cats);
+  updateSubtabBar();
+}
+
 function deletePromptCluster(slug) {
   const clusters = getPromptClusters();
   if (!clusters[slug]) return;
@@ -421,6 +681,42 @@ function deletePromptCluster(slug) {
   if (currentFilter === 'prompt-' + slug) currentFilter = 'all';
   updateSubtabBar();
   refreshCurrentView();
+}
+
+function renamePromptCluster(slug) {
+  const clusters = getPromptClusters();
+  const cluster = clusters[slug];
+  if (!cluster) return;
+  const currentLabel = cluster.label || slug;
+  openClusterRenameModal('prompt', slug, currentLabel);
+}
+
+function movePromptCluster(slug, direction) {
+  const clusters = getPromptClusters();
+  const entries = Object.entries(clusters || {});
+  if (!entries.length || !clusters[slug]) return;
+  entries.sort((a, b) => {
+    const [slugA, clusterA] = a;
+    const [slugB, clusterB] = b;
+    const orderA = typeof clusterA.order === 'number' ? clusterA.order : Number.MAX_SAFE_INTEGER;
+    const orderB = typeof clusterB.order === 'number' ? clusterB.order : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    const ca = clusterA.createdAt || '';
+    const cb = clusterB.createdAt || '';
+    if (ca && cb && ca !== cb) return ca.localeCompare(cb);
+    return slugA.localeCompare(slugB);
+  });
+  const index = entries.findIndex(([s]) => s === slug);
+  if (index === -1) return;
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= entries.length) return;
+  const [item] = entries.splice(index, 1);
+  entries.splice(targetIndex, 0, item);
+  entries.forEach(([s, cluster], idx) => {
+    cluster.order = idx;
+  });
+  savePromptClusters(clusters);
+  updateSubtabBar();
 }
 
 // --- View switching ---
@@ -434,6 +730,7 @@ async function ensureTimelineThreadHeaders() {
     return;
   }
   const uids = imapWithoutThread.map((e) => e.uid).filter(Boolean);
+  console.log('[butter-mail] timeline: fetching thread headers for', uids.length, 'emails');
   try {
     const res = await window.electronAPI.imap.fetchThreadHeaders(uids);
     if (!res.ok || !res.headers) return;
@@ -447,7 +744,88 @@ async function ensureTimelineThreadHeaders() {
       }
     });
     timelineHeadersLoaded = true;
+    console.log('[butter-mail] timeline: thread headers loaded for', Object.keys(res.headers).length, 'emails');
   } catch (_) {}
+}
+
+function buildThreadRepsForClustering(allEmails, embeddings) {
+  const emails = allEmails.filter((e) => embeddings[e.id]);
+  if (emails.length === 0) {
+    return { repIds: [], repToMembers: {} };
+  }
+
+  let threads = null;
+  if (window.TimelineView && typeof window.TimelineView.buildThreads === 'function') {
+    try {
+      threads = window.TimelineView.buildThreads(emails);
+    } catch (err) {
+      console.warn('[butter-mail] timeline: buildThreads failed for clustering:', err);
+      threads = null;
+    }
+  }
+
+  if (!threads || !Array.isArray(threads) || threads.length === 0) {
+    const repIdsFallback = emails.map((e) => e.id);
+    const repToMembersFallback = {};
+    repIdsFallback.forEach((id) => {
+      repToMembersFallback[id] = [id];
+    });
+    console.log('[butter-mail] clustering: using per-email reps (no threads available) for', emails.length, 'emails');
+    return { repIds: repIdsFallback, repToMembers: repToMembersFallback };
+  }
+
+  const repIds = [];
+  const repToMembers = {};
+  const memberSet = new Set();
+
+  threads.forEach((thread) => {
+    if (!thread || thread.length === 0) return;
+    const members = thread.filter((e) => embeddings[e.id]);
+    if (members.length === 0) return;
+    const rep = members[members.length - 1]; // latest email in thread (buildThreads sorts by date asc)
+    const repId = rep.id;
+    const memberIds = members.map((e) => e.id);
+    repIds.push(repId);
+    repToMembers[repId] = memberIds;
+    memberIds.forEach((id) => memberSet.add(id));
+  });
+
+  emails.forEach((e) => {
+    if (!memberSet.has(e.id)) {
+      repIds.push(e.id);
+      repToMembers[e.id] = [e.id];
+      memberSet.add(e.id);
+    }
+  });
+
+  console.log('[butter-mail] clustering: using', repIds.length, 'thread representatives for', emails.length, 'emails');
+  return { repIds, repToMembers };
+}
+
+function expandClusterAssignmentsToThreads(clusterRes, repToMembers, embeddings) {
+  const assignments = {};
+  const meta = { ...(clusterRes.meta || {}) };
+  const srcAssignments = clusterRes.assignments || {};
+
+  Object.keys(repToMembers).forEach((repId) => {
+    const catId = srcAssignments[repId] || 'noise';
+    const members = repToMembers[repId] || [];
+    members.forEach((emailId) => {
+      assignments[emailId] = catId;
+    });
+  });
+
+  Object.keys(embeddings || {}).forEach((emailId) => {
+    if (!assignments[emailId]) {
+      assignments[emailId] = 'noise';
+    }
+  });
+
+  if (!meta.noise) {
+    meta.noise = { name: 'Uncategorized', color: '#999' };
+  }
+
+  return { assignments, meta };
 }
 
 function refreshCurrentView() {
@@ -468,6 +846,8 @@ function renderGraphView(emails) {
   filteredIds.forEach((id) => {
     if (pcaPoints[id]) points[id] = pcaPoints[id];
   });
+  const pointCount = Object.keys(points).length;
+  console.log('[butter-mail] graph view: rendering', pointCount, 'points (PCA).');
   const emailsById = {};
   emails.forEach((e) => { emailsById[e.id] = getEmailsWithCategories([e])[0]; });
   if (!window.GraphView.init) return;
@@ -499,8 +879,52 @@ async function fetchFromImap() {
   }
 }
 
+// --- Re-cluster (DBSCAN only; keeps prompt clusters) ---
+async function recluster() {
+  if (typeof window.electronAPI === 'undefined') {
+    alert('Re-cluster requires the Electron app. Run: npm start');
+    return;
+  }
+  const embeddings = getEmbeddings();
+  const emailIds = Object.keys(embeddings);
+  if (emailIds.length === 0) {
+    alert('No embeddings. Run "compute embeddings" first.');
+    return;
+  }
+  const allEmails = getAllEmails();
+  if (typeof ensureTimelineThreadHeaders === 'function') {
+    await ensureTimelineThreadHeaders();
+  }
+  const { repIds, repToMembers } = buildThreadRepsForClustering(allEmails, embeddings);
+  const btn = document.getElementById('recluster-btn');
+  const progressEl = document.getElementById('progress-text');
+  if (btn) btn.disabled = true;
+  if (progressEl) progressEl.textContent = 'Re-clustering...';
+  console.log('[butter-mail] recluster: starting for', repIds.length, 'thread representatives');
+  try {
+    const clusterRes = await window.electronAPI.embeddings.cluster(embeddings, repIds);
+    if (!clusterRes.ok) throw new Error(clusterRes.error || 'Re-cluster failed');
+    // Full replace: previous DBSCAN categories are removed; prompt clusters (separate store) are untouched
+    const expanded = expandClusterAssignmentsToThreads(clusterRes, repToMembers, embeddings);
+    saveCategories(expanded);
+    currentFilter = 'all';
+    console.log('[butter-mail] recluster: complete.');
+    updateSubtabBar();
+    refreshCurrentView();
+    if (progressEl) progressEl.textContent = 'Done.';
+  } catch (err) {
+    if (progressEl) progressEl.textContent = '';
+    console.error('[butter-mail] recluster error:', err);
+    alert('Error: ' + (err.message || String(err)));
+  } finally {
+    if (btn) btn.disabled = false;
+    setTimeout(() => { if (progressEl) progressEl.textContent = ''; }, 2000);
+  }
+}
+
 document.getElementById('refresh-btn').addEventListener('click', fetchFromImap);
 document.getElementById('compute-embeddings-btn').addEventListener('click', computeEmbeddings);
+document.getElementById('recluster-btn').addEventListener('click', recluster);
 
 let pendingClusterScored = null;
 let pendingClusterPrompt = '';
@@ -732,7 +1156,9 @@ function renderEmailList(emails) {
 
   if (canUseTimelineThreads) {
     const emailsWithCat = getEmailsWithCategories(sorted);
+    console.log('[butter-mail] timeline: building threads for', emailsWithCat.length, 'emails');
     const threads = window.TimelineView.buildThreads(emailsWithCat);
+    console.log('[butter-mail] timeline: built', threads.length, 'threads, rendering list');
 
     const parts = [];
     threads.forEach((thread) => {
@@ -1184,6 +1610,7 @@ composeForm.addEventListener('submit', async (e) => {
 });
 
 // --- Initial load ---
+setupClusterRenameModal();
 updateSubtabBar();
 refreshCurrentView();
 if (typeof window.electronAPI !== 'undefined') {

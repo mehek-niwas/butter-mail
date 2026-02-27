@@ -3,6 +3,7 @@
  */
 (function () {
   function buildThreads(emails) {
+    console.log('[butter-mail] timeline (buildThreads): starting for', emails.length, 'emails');
     const byMessageId = {};
     emails.forEach((e) => {
       const mid = (e.messageId || '').trim();
@@ -60,6 +61,7 @@
       return db - da;
     });
 
+    console.log('[butter-mail] timeline (buildThreads): done. threads:', threads.length, 'multi-email:', multiEmail.length, 'by-subject:', subjectThreads.length);
     return threads;
   }
 
@@ -72,6 +74,7 @@
     if (!container) return;
     const getColor = typeof getCategoryColor === 'function' ? getCategoryColor : () => '#B8952E';
 
+    console.log('[butter-mail] timeline (render): building and rendering threads for', emails.length, 'emails');
     const threads = buildThreads(emails);
     container.innerHTML = '';
 
