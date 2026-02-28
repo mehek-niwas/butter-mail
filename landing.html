@@ -9,11 +9,17 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Press+Start+2P&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --cream: #E7D8A5;
-        --butter: #E5C94A;
-        --butter-light: #EBD98E;
-        --brown: #4A3B1F;
-        --brown-muted: #6B5A2E;
+        /* Dark / brown / toast theme */
+        --toast-bg: #1a1510;
+        --toast-surface: #231d17;
+        --toast-card: #2d261e;
+        --toast-border: rgba(229, 201, 74, 0.12);
+        --cream: #e8e0d0;
+        --cream-muted: #b8a88a;
+        --butter: #e5b80b;
+        --butter-soft: rgba(229, 184, 11, 0.2);
+        --brown: #e8e0d0;
+        --brown-muted: #a89878;
       }
 
       * {
@@ -25,7 +31,7 @@
       body {
         font-family: 'DM Sans', system-ui, sans-serif;
         min-height: 100vh;
-        background: var(--cream);
+        background: var(--toast-bg);
         color: var(--brown);
         display: flex;
         align-items: center;
@@ -49,7 +55,7 @@
         content: '';
         position: absolute;
         inset: 0;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
         pointer-events: none;
       }
 
@@ -62,11 +68,19 @@
       /* Logo block */
       .logo-block {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: 0.75rem;
         margin-bottom: 1.5rem;
         animation: fadeInDown 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      .logo-block .logo-imgs {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
       }
 
       .logo-block img {
@@ -80,14 +94,14 @@
         font-family: 'Press Start 2P', monospace;
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--brown);
+        color: var(--butter);
         letter-spacing: 0.02em;
       }
 
       .welcome {
         font-size: 1.25rem;
         font-weight: 500;
-        color: var(--brown-muted);
+        color: var(--cream-muted);
         margin-bottom: 2.5rem;
         animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
       }
@@ -109,14 +123,15 @@
         flex-wrap: wrap;
         gap: 0.5rem 1rem;
         padding: 0.75rem 1.25rem;
-        background: var(--butter-light);
+        background: var(--toast-card);
+        border: 1px solid var(--toast-border);
         border-radius: 9999px;
-        box-shadow: 0 4px 24px rgba(74, 59, 31, 0.08);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
       }
 
       .tagline-static {
         font-size: 0.95rem;
-        color: var(--brown);
+        color: var(--cream-muted);
         font-weight: 500;
       }
 
@@ -135,7 +150,7 @@
         transform: translateX(-50%);
         white-space: nowrap;
         font-weight: 600;
-        color: var(--brown);
+        color: var(--cream);
       }
 
       /* CTA link to app */
@@ -150,18 +165,18 @@
         gap: 0.5rem;
         padding: 0.75rem 1.5rem;
         background: var(--butter);
-        color: var(--brown);
+        color: var(--toast-bg);
         font-weight: 600;
         font-size: 0.95rem;
         text-decoration: none;
         border-radius: 9999px;
-        box-shadow: 0 4px 20px rgba(229, 201, 74, 0.4);
+        box-shadow: 0 4px 20px rgba(229, 184, 11, 0.35);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
 
       .cta:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 28px rgba(229, 201, 74, 0.5);
+        box-shadow: 0 8px 28px rgba(229, 184, 11, 0.5);
       }
 
       @keyframes fadeIn {
@@ -198,8 +213,10 @@
     <div class="page">
       <div class="hero">
         <div class="logo-block">
-          <img src="assets/butter-mail-logo.webp" alt="" class="logo-img" aria-hidden />
-          <img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden />
+          <div class="logo-imgs">
+            <img src="assets/butter-mail-logo.webp" alt="" class="logo-img" aria-hidden />
+            <img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden />
+          </div>
           <span class="logo-text">butter mail</span>
         </div>
 
