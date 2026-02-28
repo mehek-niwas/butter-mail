@@ -1,7 +1,7 @@
 {
   "name": "butter-mail",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "main.js",
   "description": "privacy-first modern email client with intelligent search + categorization",
   "author": "mehek niwas",
