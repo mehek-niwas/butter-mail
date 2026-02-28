@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getConfig: () => ipcRenderer.invoke('imap:getConfig'),
     saveConfig: (config) => ipcRenderer.invoke('imap:saveConfig', config),
     fetch: (limit) => ipcRenderer.invoke('imap:fetch', limit),
+    fetchMore: (limit, beforeUid) => ipcRenderer.invoke('imap:fetchMore', limit, beforeUid),
     fetchOne: (uid) => ipcRenderer.invoke('imap:fetchOne', uid),
     fetchBodies: (uids) => ipcRenderer.invoke('imap:fetchBodies', uids),
     fetchThreadHeaders: (uids) => ipcRenderer.invoke('imap:fetchThreadHeaders', uids),

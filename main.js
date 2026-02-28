@@ -303,6 +303,57 @@ ipcMain.handle('imap:fetch', async (_, limit = 50) => {
   }
 });
 
+// Fetch older INBOX messages (for "load more"). beforeUid = oldest UID we already have.
+ipcMain.handle('imap:fetchMore', async (_, limit = 50, beforeUid) => {
+  const config = loadConfig();
+  if (!config || !config.host || !config.user || !config.pass) {
+    return { ok: false, error: 'IMAP not configured' };
+  }
+  if (beforeUid == null || beforeUid <= 1) {
+    return { ok: true, emails: [], hasMore: false };
+  }
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:fetchMore client error:', err);
+  });
+  try {
+    await client.connect();
+    await client.mailboxOpen('INBOX');
+    const exists = client.mailbox.exists;
+    if (exists === 0) {
+      return { ok: true, emails: [], hasMore: false };
+    }
+    const uidEnd = Math.max(1, Number(beforeUid) - 1);
+    const uidStart = Math.max(1, uidEnd - limit + 1);
+    const range = uidStart === uidEnd ? String(uidStart) : uidStart + ':' + uidEnd;
+    const inboxMessages = await client.fetchAll(range, { envelope: true }, { uid: true });
+    const emails = [];
+    for (const msg of inboxMessages) {
+      const fromAddr = msg.envelope?.from?.[0];
+      const fromStr = fromAddr
+        ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address)
+        : '';
+      emails.push({
+        id: `imap-${msg.uid}`,
+        uid: msg.uid,
+        subject: msg.envelope?.subject || '(no subject)',
+        from: fromStr,
+        date: msg.envelope?.date ? new Date(msg.envelope.date).toISOString() : '',
+        body: '',
+        fromEmail: fromAddr?.address || '',
+        mailbox: 'INBOX'
+      });
+    }
+    const hasMore = uidStart > 1;
+    return { ok: true, emails, hasMore };
+  } catch (err) {
+    console.error('[butter-mail] imap:fetchMore failed:', err);
+    return { ok: false, error: err.message || String(err), emails: [] };
+  } finally {
+    await safeLogout(client, 'imap:fetchMore');
+  }
+});
+
 ipcMain.handle('imap:fetchOne', async (_, uid) => {
   const config = loadConfig();
   if (!config || !config.host || !config.user || !config.pass) {

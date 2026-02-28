@@ -89,6 +89,74 @@ function savePromptClusters(clusters) {
   localStorage.setItem(PROMPT_CLUSTERS_KEY, JSON.stringify(clusters));
 }
 
+// --- IMAP cache (IndexedDB) ---
+const IMAP_CACHE_DB_NAME = 'butter-mail-imap-cache';
+const IMAP_CACHE_STORE = 'cache';
+
+function openImapCacheDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IMAP_CACHE_DB_NAME, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IMAP_CACHE_STORE)) {
+        db.createObjectStore(IMAP_CACHE_STORE, { keyPath: 'accountKey' });
+      }
+    };
+  });
+}
+
+async function getCachedEmails(accountKey) {
+  if (!accountKey) return [];
+  try {
+    const db = await openImapCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IMAP_CACHE_STORE, 'readonly');
+      const store = tx.objectStore(IMAP_CACHE_STORE);
+      const req = store.get(accountKey);
+      req.onsuccess = () => {
+        const row = req.result;
+        resolve(row && Array.isArray(row.emails) ? row.emails : []);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function setCachedEmails(accountKey, emails) {
+  if (!accountKey || !Array.isArray(emails)) return;
+  try {
+    const db = await openImapCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IMAP_CACHE_STORE, 'readwrite');
+      const store = tx.objectStore(IMAP_CACHE_STORE);
+      store.put({ accountKey, emails, lastSynced: Date.now() });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[butter-mail] imap cache write failed:', e);
+  }
+}
+
+async function getImapCacheLastSynced(accountKey) {
+  if (!accountKey) return null;
+  try {
+    const db = await openImapCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IMAP_CACHE_STORE, 'readonly');
+      const req = tx.objectStore(IMAP_CACHE_STORE).get(accountKey);
+      req.onsuccess = () => resolve(req.result ? req.result.lastSynced : null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
 // --- Parse .eml content ---
 function parseEml(text) {
   const lines = text.split(/\r?\n/);
@@ -174,6 +242,18 @@ let selectedEmail = null;
 let timelineViewInList = false;
 const expandedThreads = new Set();
 let isFetchingFromImap = false;
+let isFetchingMore = false;
+let imapInboxHasMore = true;
+
+function updateLoadMoreButton() {
+  const btn = document.getElementById('load-more-btn');
+  if (!btn) return;
+  const hasInbox = imapEmails.some((e) => e.mailbox === 'INBOX');
+  const show = typeof window.electronAPI !== 'undefined' && hasInbox && imapInboxHasMore && !isFetchingMore;
+  btn.style.display = show ? '' : 'none';
+  btn.disabled = isFetchingMore;
+  btn.textContent = isFetchingMore ? 'Loading…' : 'Load more';
+}
 
 function getFilteredEmails() {
   let emails = searchResults !== null ? searchResults : getAllEmails();
@@ -879,12 +959,15 @@ async function fetchFromImap() {
     console.warn('[butter-mail] refresh: refresh button element not found');
   }
   try {
-    console.log('[butter-mail] refresh: calling main imap.fetch(limit=800)');
-    const result = await window.electronAPI.imap.fetch(800);
+    const config = await window.electronAPI.imap.getConfig();
+    const accountKey = config && config.host && config.user ? config.host + '::' + config.user : null;
+    console.log('[butter-mail] refresh: calling main imap.fetch(limit=150)');
+    const result = await window.electronAPI.imap.fetch(150);
     if (result.ok) {
       console.log('[butter-mail] refresh: ok. emails:', Array.isArray(result.emails) ? result.emails.length : 0);
       imapEmails = result.emails;
       timelineHeadersLoaded = false;
+      if (accountKey) await setCachedEmails(accountKey, result.emails);
     } else if (!result.error.includes('not configured')) {
       const message = result.error || 'Unknown';
       console.error('[butter-mail] IMAP refresh failed:', message);
@@ -892,6 +975,7 @@ async function fetchFromImap() {
     }
     refreshCurrentView();
     updateSubtabBar();
+    updateLoadMoreButton();
   } finally {
     isFetchingFromImap = false;
     console.log('[butter-mail] refresh: end');
@@ -899,6 +983,7 @@ async function fetchFromImap() {
       btn.classList.remove('loading');
       btn.disabled = false;
     }
+    updateLoadMoreButton();
   }
 }
 
@@ -949,6 +1034,10 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
   console.log('[butter-mail] refresh button: clicked');
   fetchFromImap();
 });
+const loadMoreBtn = document.getElementById('load-more-btn');
+if (loadMoreBtn) {
+  loadMoreBtn.addEventListener('click', () => loadMoreImapEmails());
+}
 document.getElementById('compute-embeddings-btn').addEventListener('click', computeEmbeddings);
 document.getElementById('recluster-btn').addEventListener('click', recluster);
 
@@ -1152,6 +1241,73 @@ document.getElementById('prompt-cluster-input').addEventListener('keydown', (e) 
   if (e.key === 'Enter') createPromptCluster();
 });
 
+// --- Virtual list (flat list only) ---
+const VIRTUAL_LIST_ROW_HEIGHT = 60;
+const VIRTUAL_LIST_THRESHOLD = 20;
+const VIRTUAL_LIST_OVERSCAN = 5;
+
+function buildFlatRowHtml(e, isSearchMode, cats, addVirtualClass) {
+  const catColor = e.categoryId && cats.meta[e.categoryId] ? cats.meta[e.categoryId].color : '#B8952E';
+  const catTitle = e.categoryId && cats.meta[e.categoryId] ? (cats.meta[e.categoryId].name || '') : '';
+  const rankHtml = isSearchMode
+    ? '<span class="email-row-rank">#' + String(e.searchRank) + '</span>' +
+      '<span class="email-row-scores">' +
+      'dense: ' + (e.denseScore != null ? Number(e.denseScore).toFixed(2) : '—') + ' | ' +
+      'sparse: ' + (e.sparseScore != null ? Number(e.sparseScore).toFixed(2) : '—') +
+      '</span>'
+    : '';
+  const virtualClass = addVirtualClass ? ' email-row-virtual' : '';
+  return '<div class="email-row' + virtualClass + (isSearchMode ? ' email-row-search' : '') + '" data-id="' + escapeHtml(e.id) + '">' +
+    '<span class="email-row-category-square" style="background-color:' + escapeHtml(catColor) + '" title="' + escapeHtml(catTitle) + '" aria-hidden></span>' +
+    (isSearchMode ? rankHtml : '') +
+    '<span class="email-row-subject" style="text-decoration-color:' + escapeHtml(catColor) + '">' + escapeHtml(e.subject) + '</span>' +
+    '<span class="email-row-date">' + escapeHtml(formatDate(e.date)) + '</span>' +
+    '</div>';
+}
+
+function attachVirtualRowClickHandlers(contentEl, listEl) {
+  if (!contentEl || !listEl) return;
+  contentEl.querySelectorAll('.email-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const email = getAllEmails().find((x) => x.id === row.dataset.id);
+      if (email) {
+        selectedEmail = email;
+        if (currentView === 'list') {
+          updateInlineDetail(email);
+          listEl.querySelectorAll('.email-row').forEach((r) => r.classList.remove('selected'));
+          row.classList.add('selected');
+        } else {
+          openEmailDetail(email);
+        }
+      }
+    });
+  });
+  if (selectedEmail) {
+    const sel = contentEl.querySelector('.email-row[data-id="' + escapeHtml(selectedEmail.id) + '"]');
+    if (sel) sel.classList.add('selected');
+  }
+}
+
+function updateVirtualListVisibleRows(listEl) {
+  const data = listEl._virtualListData;
+  if (!data || !data.wrapper || !data.contentEl || !data.topSpacer || !data.bottomSpacer) return;
+  const { emails, isSearchMode, cats, totalRows } = data;
+  const scrollTop = listEl.scrollTop;
+  const containerHeight = listEl.clientHeight;
+  const startIndex = Math.max(0, Math.floor(scrollTop / VIRTUAL_LIST_ROW_HEIGHT) - VIRTUAL_LIST_OVERSCAN);
+  const visibleCount = Math.ceil(containerHeight / VIRTUAL_LIST_ROW_HEIGHT) + 2 * VIRTUAL_LIST_OVERSCAN;
+  const endIndex = Math.min(totalRows, startIndex + visibleCount);
+  // Skip DOM update if visible range unchanged (reduces scroll lag)
+  if (data.lastStartIndex === startIndex && data.lastEndIndex === endIndex) return;
+  data.lastStartIndex = startIndex;
+  data.lastEndIndex = endIndex;
+  data.topSpacer.style.height = (startIndex * VIRTUAL_LIST_ROW_HEIGHT) + 'px';
+  data.bottomSpacer.style.height = ((totalRows - endIndex) * VIRTUAL_LIST_ROW_HEIGHT) + 'px';
+  const slice = emails.slice(startIndex, endIndex);
+  data.contentEl.innerHTML = slice.map((e) => buildFlatRowHtml(e, isSearchMode, cats, true)).join('');
+  attachVirtualRowClickHandlers(data.contentEl, listEl);
+}
+
 // --- Render email list ---
 function renderEmailList(emails) {
   const listEl = document.getElementById('email-list');
@@ -1171,6 +1327,7 @@ function renderEmailList(emails) {
       ? 'Click "refresh" to fetch from IMAP.'
       : 'Fetch from IMAP to get started.';
     listEl.innerHTML = '<p class="email-list-empty">No emails yet. ' + hint + '</p>';
+    listEl._virtualListData = null;
     return;
   }
 
@@ -1286,26 +1443,56 @@ function renderEmailList(emails) {
     return;
   }
 
-  // Default: flat list (optionally in search mode).
+  // Default: flat list (optionally in search mode). Use virtual list when many rows.
   const emailsWithCat = getEmailsWithCategories(sorted);
+  const totalRows = emailsWithCat.length;
+  const useVirtualList = totalRows > VIRTUAL_LIST_THRESHOLD;
+
+  if (useVirtualList) {
+    listEl.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'email-list-virtual-wrapper';
+    wrapper.style.height = (totalRows * VIRTUAL_LIST_ROW_HEIGHT) + 'px';
+    wrapper.style.position = 'relative';
+    const topSpacer = document.createElement('div');
+    topSpacer.className = 'email-list-virtual-spacer';
+    topSpacer.style.height = '0';
+    const contentEl = document.createElement('div');
+    contentEl.className = 'email-list-virtual-content';
+    const bottomSpacer = document.createElement('div');
+    bottomSpacer.className = 'email-list-virtual-spacer';
+    wrapper.appendChild(topSpacer);
+    wrapper.appendChild(contentEl);
+    wrapper.appendChild(bottomSpacer);
+    listEl.appendChild(wrapper);
+    listEl._virtualListData = {
+      emails: emailsWithCat,
+      isSearchMode,
+      cats,
+      totalRows,
+      wrapper,
+      topSpacer,
+      contentEl,
+      bottomSpacer,
+      lastStartIndex: -1,
+      lastEndIndex: -1
+    };
+    let scrollRaf = null;
+    listEl.addEventListener('scroll', () => {
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        updateVirtualListVisibleRows(listEl);
+        scrollRaf = null;
+      });
+    }, { passive: true });
+    updateVirtualListVisibleRows(listEl);
+    return;
+  }
+
+  // Non-virtual flat list (small list).
+  listEl._virtualListData = null;
   listEl.innerHTML = emailsWithCat
-    .map((e) => {
-      const catColor = e.categoryId && cats.meta[e.categoryId] ? cats.meta[e.categoryId].color : '#B8952E';
-      const catTitle = e.categoryId && cats.meta[e.categoryId] ? (cats.meta[e.categoryId].name || '') : '';
-      const rankHtml = isSearchMode
-        ? '<span class="email-row-rank">#' + String(e.searchRank) + '</span>' +
-          '<span class="email-row-scores">' +
-          'dense: ' + (e.denseScore != null ? Number(e.denseScore).toFixed(2) : '—') + ' | ' +
-          'sparse: ' + (e.sparseScore != null ? Number(e.sparseScore).toFixed(2) : '—') +
-          '</span>'
-        : '';
-      return '<div class="email-row' + (isSearchMode ? ' email-row-search' : '') + '" data-id="' + escapeHtml(e.id) + '">' +
-        '<span class="email-row-category-square" style="background-color:' + escapeHtml(catColor) + '" title="' + escapeHtml(catTitle) + '" aria-hidden></span>' +
-        (isSearchMode ? rankHtml : '') +
-        '<span class="email-row-subject" style="text-decoration-color:' + escapeHtml(catColor) + '">' + escapeHtml(e.subject) + '</span>' +
-        '<span class="email-row-date">' + escapeHtml(formatDate(e.date)) + '</span>' +
-        '</div>';
-    })
+    .map((e) => buildFlatRowHtml(e, isSearchMode, cats, false))
     .join('');
 
   listEl.querySelectorAll('.email-row').forEach((row) => {
@@ -1646,7 +1833,54 @@ composeForm.addEventListener('submit', async (e) => {
 // --- Initial load ---
 setupClusterRenameModal();
 updateSubtabBar();
+updateLoadMoreButton();
 refreshCurrentView();
 if (typeof window.electronAPI !== 'undefined') {
-  fetchFromImap();
+  (async () => {
+    try {
+      const config = await window.electronAPI.imap.getConfig();
+      const accountKey = config && config.host && config.user ? config.host + '::' + config.user : null;
+      if (accountKey) {
+        const cached = await getCachedEmails(accountKey);
+        if (cached && cached.length > 0) {
+          imapEmails = cached;
+          refreshCurrentView();
+          updateSubtabBar();
+          updateLoadMoreButton();
+        }
+      }
+    } catch (e) {
+      console.warn('[butter-mail] imap cache load failed:', e);
+    }
+    fetchFromImap();
+  })();
+}
+
+async function loadMoreImapEmails() {
+  if (typeof window.electronAPI === 'undefined' || isFetchingMore) return;
+  const inboxUids = imapEmails.filter((e) => e.mailbox === 'INBOX').map((e) => e.uid).filter((u) => u != null);
+  if (inboxUids.length === 0) return;
+  const minUid = Math.min(...inboxUids);
+  isFetchingMore = true;
+  updateLoadMoreButton();
+  try {
+    const result = await window.electronAPI.imap.fetchMore(100, minUid);
+    if (result.ok && Array.isArray(result.emails) && result.emails.length > 0) {
+      const existingIds = new Set(imapEmails.map((e) => e.id));
+      const newEmails = result.emails.filter((e) => !existingIds.has(e.id));
+      imapEmails = [...imapEmails, ...newEmails];
+      const config = await window.electronAPI.imap.getConfig();
+      const accountKey = config && config.host && config.user ? config.host + '::' + config.user : null;
+      if (accountKey) await setCachedEmails(accountKey, imapEmails);
+      refreshCurrentView();
+    }
+    if (result.hasMore === false) {
+      imapInboxHasMore = false;
+    }
+  } catch (e) {
+    console.warn('[butter-mail] load more failed:', e);
+  } finally {
+    isFetchingMore = false;
+    updateLoadMoreButton();
+  }
 }
