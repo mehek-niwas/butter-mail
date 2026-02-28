@@ -157,73 +157,6 @@ async function getImapCacheLastSynced(accountKey) {
   }
 }
 
-// --- Parse .eml content ---
-function parseEml(text) {
-  const lines = text.split(/\r?\n/);
-  const headers = {};
-  let bodyStart = -1;
-  let i = 0;
-
-  for (; i < lines.length; i++) {
-    const line = lines[i];
-    if (line === '') {
-      bodyStart = i;
-      break;
-    }
-    const match = line.match(/^([\w-]+):\s*(.*)$/i);
-    if (match) {
-      const key = match[1].toLowerCase();
-      let val = match[2];
-      while (i + 1 < lines.length && /^\s/.test(lines[i + 1])) {
-        i++;
-        val += lines[i].trim();
-      }
-      headers[key] = val;
-    }
-  }
-
-  const body = bodyStart >= 0 ? lines.slice(bodyStart + 1).join('\n').trim() : '';
-  function extractEmail(str) {
-    if (!str) return '';
-    const m = str.match(/<([^>]+)>/);
-    return m ? m[1] : str.trim();
-  }
-
-  const msgId = (headers['message-id'] || '').trim();
-  const inReplyTo = (headers['in-reply-to'] || '').trim();
-  const refs = (headers.references || '').trim();
-  return {
-    id: 'eml-' + Date.now() + '-' + Math.random().toString(36).slice(2),
-    from: headers.from || '',
-    to: headers.to || '',
-    subject: (headers.subject || '(no subject)').replace(/\s+/g, ' ').trim(),
-    date: headers.date || '',
-    body,
-    fromEmail: extractEmail(headers.from),
-    messageId: msgId,
-    inReplyTo,
-    references: refs
-  };
-}
-
-function parseMbox(text) {
-  const emails = [];
-  const blocks = text.split(/\r?\n(?=From )/);
-  let idx = 0;
-  for (const block of blocks) {
-    const trimmed = block.trim();
-    if (!trimmed) continue;
-    const lines = trimmed.split(/\r?\n/);
-    const msg = lines[0].match(/^From /) ? lines.slice(1).join('\n') : trimmed;
-    if (!msg.trim()) continue;
-    try {
-      const parsed = parseEml(msg);
-      parsed.id = 'mbox-' + Date.now() + '-' + idx++;
-      emails.push(parsed);
-    } catch (_) {}
-  }
-  return emails;
-}
 
 let imapEmails = [];
 
@@ -959,6 +892,7 @@ async function fetchFromImap() {
     console.warn('[butter-mail] refresh: refresh button element not found');
   }
   try {
+    imapInboxHasMore = true;
     const config = await window.electronAPI.imap.getConfig();
     const accountKey = config && config.host && config.user ? config.host + '::' + config.user : null;
     console.log('[butter-mail] refresh: calling main imap.fetch(limit=150)');
@@ -968,6 +902,8 @@ async function fetchFromImap() {
       imapEmails = result.emails;
       timelineHeadersLoaded = false;
       if (accountKey) await setCachedEmails(accountKey, result.emails);
+      const inboxCount = (result.emails || []).filter((e) => e.mailbox === 'INBOX').length;
+      if (inboxCount < 150) imapInboxHasMore = false;
     } else if (!result.error.includes('not configured')) {
       const message = result.error || 'Unknown';
       console.error('[butter-mail] IMAP refresh failed:', message);
