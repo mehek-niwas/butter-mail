@@ -213,7 +213,8 @@ ipcMain.handle('imap:fetch', async (_, limit = 50) => {
       const range = start === inboxCount ? `${start}` : `${start}:${exists}`;
       console.log('[butter-mail] imap:fetch INBOX fetch range:', range, 'count:', inboxCount);
 
-      for await (const msg of client.fetch(range, { envelope: true })) {
+      const inboxMessages = await client.fetchAll(range, { envelope: true });
+      for (const msg of inboxMessages) {
         const fromAddr = msg.envelope?.from?.[0];
         const fromStr = fromAddr
           ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address)
@@ -248,19 +249,20 @@ ipcMain.handle('imap:fetch', async (_, limit = 50) => {
           const sentRange = sentStart === sentCount ? `${sentStart}` : `${sentStart}:${sentExists}`;
           console.log('[butter-mail] imap:fetch SENT fetch range:', sentRange, 'count:', sentCount);
           // For sent items we fetch the full source once so we also get bodies.
-          // Use sequence numbers (like INBOX) instead of UIDs so the 1:exists
-          // range returns all messages in the mailbox.
-          for await (const msg of client.fetch(sentRange, { envelope: true, source: true })) {
+          const sentMessages = await client.fetchAll(sentRange, { envelope: true, source: true });
+          // Parse all bodies in parallel instead of one-by-one.
+          const parsedList = await Promise.all(
+            sentMessages.map((msg) =>
+              parseEmlFromSource(msg.source).catch(() => null)
+            )
+          );
+          for (let i = 0; i < sentMessages.length; i++) {
+            const msg = sentMessages[i];
+            const parsed = parsedList[i];
             const fromAddr = msg.envelope?.from?.[0];
             const fromStr = fromAddr
               ? (fromAddr.name ? `${fromAddr.name} <${fromAddr.address}>` : fromAddr.address)
               : '';
-            let parsed = null;
-            try {
-              parsed = await parseEmlFromSource(msg.source);
-            } catch {
-              parsed = null;
-            }
             emails.push({
               id: `imap-${msg.uid}`,
               uid: msg.uid,
@@ -356,18 +358,23 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
     await client.connect();
     await client.mailboxOpen('INBOX');
     const headers = {};
-    for (const uid of uids) {
-      try {
-        const msg = await client.fetchOne(String(uid), { source: { start: 0, maxLength: 8192 } }, { uid: true });
-        if (msg && msg.source) {
-          const parsed = await parseEmlFromSource(msg.source);
-          headers[uid] = {
-            messageId: parsed.messageId || '',
-            inReplyTo: parsed.inReplyTo || '',
-            references: parsed.references || ''
-          };
-        }
-      } catch (_) {}
+    // Batch fetch all messages (one round-trip) instead of one fetch per UID.
+    const messages = await client.fetchAll(uids, { source: { start: 0, maxLength: 8192 } }, { uid: true });
+    const parsedList = await Promise.all(
+      messages.map((msg) =>
+        msg && msg.source ? parseEmlFromSource(msg.source).catch(() => null) : Promise.resolve(null)
+      )
+    );
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const parsed = parsedList[i];
+      if (msg && parsed) {
+        headers[msg.uid] = {
+          messageId: parsed.messageId || '',
+          inReplyTo: parsed.inReplyTo || '',
+          references: parsed.references || ''
+        };
+      }
     }
     console.log('[butter-mail] timeline: fetchThreadHeaders done. headers:', Object.keys(headers).length);
     return { ok: true, headers };
@@ -391,11 +398,18 @@ ipcMain.handle('imap:fetchBodies', async (_, uids) => {
     await client.connect();
     await client.mailboxOpen('INBOX');
     const bodies = {};
-    for (const uid of uids) {
-      const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
-      if (msg) {
-        const parsed = await parseEmlFromSource(msg.source);
-        bodies[uid] = { body: parsed.body, bodyIsHtml: parsed.bodyIsHtml };
+    // Batch fetch all messages (one round-trip) instead of one fetch per UID.
+    const messages = await client.fetchAll(uids, { source: true }, { uid: true });
+    const parsedList = await Promise.all(
+      messages.map((msg) =>
+        msg && msg.source ? parseEmlFromSource(msg.source).catch(() => null) : Promise.resolve(null)
+      )
+    );
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const parsed = parsedList[i];
+      if (msg && parsed) {
+        bodies[msg.uid] = { body: parsed.body, bodyIsHtml: parsed.bodyIsHtml };
       }
     }
     return { ok: true, bodies };

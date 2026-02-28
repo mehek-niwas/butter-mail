@@ -22,7 +22,7 @@
     return tex;
   }
 
-  const AXIS_COLOR = 0x1a365d;
+  const AXIS_COLOR = 0x525252;
 
   function createAxes(extent) {
     const group = new THREE.Group();
@@ -65,7 +65,7 @@
     const height = container.clientHeight;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf5f2e8);
+    scene.background = new THREE.Color(0x1a1a1a);
 
     camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
     camera.position.set(6, 5, 6);
@@ -73,7 +73,7 @@
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0xf5f2e8, 1);
+    renderer.setClearColor(0x1a1a1a, 1);
 
     if (typeof THREE.OrbitControls !== 'undefined') {
       controls = new THREE.OrbitControls(camera, renderer.domElement);
