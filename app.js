@@ -172,7 +172,7 @@ let pcaPoints = getPcaPoints();
 let searchQuery = '';
 let searchResults = null;
 let selectedEmail = null;
-let timelineViewInList = false;
+let threadViewInList = false;
 const expandedThreads = new Set();
 let isFetchingFromImap = false;
 let isFetchingMore = false;
@@ -252,8 +252,8 @@ async function computeEmbeddings() {
     }
   }
 
-  if (typeof ensureTimelineThreadHeaders === 'function') {
-    await ensureTimelineThreadHeaders();
+  if (typeof ensureThreadHeaders === 'function') {
+    await ensureThreadHeaders();
   }
 
   const progressEl = document.getElementById('progress-text');
@@ -734,19 +734,19 @@ function movePromptCluster(slug, direction) {
 }
 
 // --- View switching ---
-let timelineHeadersLoaded = false;
+let threadHeadersLoaded = false;
 
-async function ensureTimelineThreadHeaders() {
-  if (typeof window.electronAPI === 'undefined' || timelineHeadersLoaded) return;
+async function ensureThreadHeaders() {
+  if (typeof window.electronAPI === 'undefined' || threadHeadersLoaded) return;
   const imapWithoutThread = imapEmails.filter(
     (e) => !e.messageId && e.uid && (!e.mailbox || e.mailbox === 'INBOX')
   );
   if (imapWithoutThread.length === 0) {
-    timelineHeadersLoaded = true;
+    threadHeadersLoaded = true;
     return;
   }
   const uids = imapWithoutThread.map((e) => e.uid).filter(Boolean);
-  console.log('[butter-mail] timeline: fetching thread headers for', uids.length, 'emails');
+  console.log('[butter-mail] thread: fetching thread headers for', uids.length, 'emails');
   try {
     const res = await window.electronAPI.imap.fetchThreadHeaders(uids);
     if (!res.ok || !res.headers) return;
@@ -759,8 +759,8 @@ async function ensureTimelineThreadHeaders() {
         email.references = h.references || '';
       }
     });
-    timelineHeadersLoaded = true;
-    console.log('[butter-mail] timeline: thread headers loaded for', Object.keys(res.headers).length, 'emails');
+    threadHeadersLoaded = true;
+    console.log('[butter-mail] thread: thread headers loaded for', Object.keys(res.headers).length, 'emails');
   } catch (_) {}
 }
 
@@ -771,11 +771,11 @@ function buildThreadRepsForClustering(allEmails, embeddings) {
   }
 
   let threads = null;
-  if (window.TimelineView && typeof window.TimelineView.buildThreads === 'function') {
+  if (window.ThreadView && typeof window.ThreadView.buildThreads === 'function') {
     try {
-      threads = window.TimelineView.buildThreads(emails);
+      threads = window.ThreadView.buildThreads(emails);
     } catch (err) {
-      console.warn('[butter-mail] timeline: buildThreads failed for clustering:', err);
+      console.warn('[butter-mail] thread: buildThreads failed for clustering:', err);
       threads = null;
     }
   }
@@ -900,7 +900,7 @@ async function fetchFromImap() {
     if (result.ok) {
       console.log('[butter-mail] refresh: ok. emails:', Array.isArray(result.emails) ? result.emails.length : 0);
       imapEmails = result.emails;
-      timelineHeadersLoaded = false;
+      threadHeadersLoaded = false;
       if (accountKey) await setCachedEmails(accountKey, result.emails);
       const inboxCount = (result.emails || []).filter((e) => e.mailbox === 'INBOX').length;
       if (inboxCount < 150) imapInboxHasMore = false;
@@ -936,8 +936,8 @@ async function recluster() {
     return;
   }
   const allEmails = getAllEmails();
-  if (typeof ensureTimelineThreadHeaders === 'function') {
-    await ensureTimelineThreadHeaders();
+  if (typeof ensureThreadHeaders === 'function') {
+    await ensureThreadHeaders();
   }
   const { repIds, repToMembers } = buildThreadRepsForClustering(allEmails, embeddings);
   const btn = document.getElementById('recluster-btn');
@@ -1270,15 +1270,15 @@ function renderEmailList(emails) {
 
   const cats = getCategories();
 
-  // If timeline view is enabled for the list, render one compact row per thread
+  // If thread view is enabled for the list, render one compact row per thread
   // with optional expansion (even when in search mode).
-  const canUseTimelineThreads = timelineViewInList && window.TimelineView && typeof window.TimelineView.buildThreads === 'function';
+  const canUseThreadView = threadViewInList && window.ThreadView && typeof window.ThreadView.buildThreads === 'function';
 
-  if (canUseTimelineThreads) {
+  if (canUseThreadView) {
     const emailsWithCat = getEmailsWithCategories(sorted);
-    console.log('[butter-mail] timeline: building threads for', emailsWithCat.length, 'emails');
-    const threads = window.TimelineView.buildThreads(emailsWithCat);
-    console.log('[butter-mail] timeline: built', threads.length, 'threads, rendering list');
+    console.log('[butter-mail] thread: building threads for', emailsWithCat.length, 'emails');
+    const threads = window.ThreadView.buildThreads(emailsWithCat);
+    console.log('[butter-mail] thread: built', threads.length, 'threads, rendering list');
 
     const parts = [];
     threads.forEach((thread) => {
@@ -1604,17 +1604,17 @@ document.querySelectorAll('.view-tab').forEach((btn) => {
   });
 });
 
-// --- List timeline view checkbox ---
-const timelineCheckbox = document.getElementById('timeline-view-checkbox');
-if (timelineCheckbox) {
-  timelineCheckbox.addEventListener('change', () => {
-    timelineViewInList = timelineCheckbox.checked;
-    if (!timelineViewInList) {
+// --- List thread view checkbox ---
+const threadCheckbox = document.getElementById('thread-view-checkbox');
+if (threadCheckbox) {
+  threadCheckbox.addEventListener('change', () => {
+    threadViewInList = threadCheckbox.checked;
+    if (!threadViewInList) {
       expandedThreads.clear();
     }
-    if (timelineViewInList && typeof ensureTimelineThreadHeaders === 'function') {
-      ensureTimelineThreadHeaders().then(() => {
-        if (currentView === 'list' && timelineViewInList) {
+    if (threadViewInList && typeof ensureThreadHeaders === 'function') {
+      ensureThreadHeaders().then(() => {
+        if (currentView === 'list' && threadViewInList) {
           renderEmailList(getFilteredEmails());
         }
       });

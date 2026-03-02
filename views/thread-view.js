@@ -1,9 +1,9 @@
 /**
- * Timeline view - email threads as card stacks.
+ * Thread view - email threads as card stacks.
  */
 (function () {
   function buildThreads(emails) {
-    console.log('[butter-mail] timeline (buildThreads): starting for', emails.length, 'emails');
+    console.log('[butter-mail] thread (buildThreads): starting for', emails.length, 'emails');
     const byMessageId = {};
     emails.forEach((e) => {
       const mid = (e.messageId || '').trim();
@@ -61,7 +61,7 @@
       return db - da;
     });
 
-    console.log('[butter-mail] timeline (buildThreads): done. threads:', threads.length, 'multi-email:', multiEmail.length, 'by-subject:', subjectThreads.length);
+    console.log('[butter-mail] thread (buildThreads): done. threads:', threads.length, 'multi-email:', multiEmail.length, 'by-subject:', subjectThreads.length);
     return threads;
   }
 
@@ -70,28 +70,28 @@
   }
 
   function render(containerId, emails, onEmailClick, getCategoryColor) {
-    const container = document.getElementById(containerId || 'timeline-stacks');
+    const container = document.getElementById(containerId || 'thread-stacks');
     if (!container) return;
     const getColor = typeof getCategoryColor === 'function' ? getCategoryColor : () => '#B8952E';
 
-    console.log('[butter-mail] timeline (render): building and rendering threads for', emails.length, 'emails');
+    console.log('[butter-mail] thread (render): building and rendering threads for', emails.length, 'emails');
     const threads = buildThreads(emails);
     container.innerHTML = '';
 
     threads.forEach((thread) => {
       const stack = document.createElement('div');
-      stack.className = 'timeline-stack';
+      stack.className = 'thread-stack';
       stack.style.minHeight = (thread.length * 52 + Math.max(0, thread.length - 1) * 8) + 'px';
       thread.forEach((email, ei) => {
         const card = document.createElement('div');
-        card.className = 'timeline-card';
+        card.className = 'thread-card';
         card.style.transform = `translate(${ei * 10}px, ${ei * 10}px)`;
         card.style.zIndex = ei;
         const catColor = (email.categoryId && getColor(email.categoryId)) || getColor(null);
         card.style.borderLeftColor = catColor;
         card.innerHTML = `
-          <span class="timeline-card-subject">${escapeHtml(email.subject || '(no subject)')}</span>
-          <span class="timeline-card-date">${formatDate(email.date)}</span>
+          <span class="thread-card-subject">${escapeHtml(email.subject || '(no subject)')}</span>
+          <span class="thread-card-date">${formatDate(email.date)}</span>
         `;
         card.addEventListener('click', (e) => {
           if (stack.classList.contains('expanded')) {
@@ -134,7 +134,7 @@
     }
   }
 
-  window.TimelineView = {
+  window.ThreadView = {
     buildThreads,
     render
   };

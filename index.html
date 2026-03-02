@@ -60,9 +60,9 @@
           <div class="content-panel view-panel list-view-layout" id="panel-list">
             <div class="email-list-column">
               <div class="email-list-toolbar">
-                <label class="timeline-toggle">
-                  <input type="checkbox" id="timeline-view-checkbox" />
-                  <span>Timeline view</span>
+                <label class="thread-toggle">
+                  <input type="checkbox" id="thread-view-checkbox" />
+                  <span>Thread view</span>
                 </label>
                 <button type="button" class="load-more-btn" id="load-more-btn" title="Load older emails">Load more</button>
               </div>
@@ -185,7 +185,7 @@
             </div>
           </div>
 
-          <!-- Email detail modal (used for Graph / Timeline click) -->
+          <!-- Email detail modal (used for Graph / Thread click) -->
           <div class="email-detail-overlay hidden" id="email-detail">
             <div class="email-detail-panel">
               <button type="button" class="email-detail-close" id="email-detail-close">&#215;</button>
@@ -208,7 +208,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="views/graph-view.js"></script>
-    <script src="views/timeline-view.js"></script>
+    <script src="views/thread-view.js"></script>
     <script src="search/hybrid-search.js"></script>
     <script src="app.js"></script>
   </body>

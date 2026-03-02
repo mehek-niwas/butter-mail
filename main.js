@@ -400,7 +400,7 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
   if (!config || !config.host || !config.user || !config.pass || !uids || uids.length === 0) {
     return { ok: true, headers: {} };
   }
-  console.log('[butter-mail] timeline: fetchThreadHeaders starting for', uids.length, 'uids');
+  console.log('[butter-mail] thread: fetchThreadHeaders starting for', uids.length, 'uids');
   const client = createImapClient(config);
   client.on('error', (err) => {
     console.error('[butter-mail] imap:fetchThreadHeaders client error:', err);
@@ -427,7 +427,7 @@ ipcMain.handle('imap:fetchThreadHeaders', async (_, uids) => {
         };
       }
     }
-    console.log('[butter-mail] timeline: fetchThreadHeaders done. headers:', Object.keys(headers).length);
+    console.log('[butter-mail] thread: fetchThreadHeaders done. headers:', Object.keys(headers).length);
     return { ok: true, headers };
   } catch (err) {
     return { ok: false, error: err.message || String(err), headers: {} };

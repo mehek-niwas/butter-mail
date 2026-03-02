@@ -476,7 +476,7 @@ body {
   padding: 0.5rem 0.75rem 0.25rem;
 }
 
-.timeline-toggle {
+.thread-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -484,7 +484,7 @@ body {
   color: var(--text-muted);
 }
 
-.timeline-toggle input[type="checkbox"] {
+.thread-toggle input[type="checkbox"] {
   accent-color: var(--butter);
 }
 
@@ -1251,34 +1251,34 @@ body {
   box-shadow: var(--shadow);
 }
 
-/* Timeline view */
-.timeline-stacks {
+/* Thread view */
+.thread-stacks {
   display: flex;
   flex-direction: column;
   gap: 2rem;
 }
 
-.timeline-stack {
+.thread-stack {
   position: relative;
   min-height: 4rem;
   cursor: pointer;
 }
 
-.timeline-stack.expanded {
+.thread-stack.expanded {
   display: flex;
   flex-direction: column-reverse;
   gap: 0.5rem;
   min-height: auto;
 }
 
-.timeline-stack.expanded .timeline-card {
+.thread-stack.expanded .thread-card {
   position: relative;
   transform: none;
   left: auto;
   top: auto;
 }
 
-.timeline-card {
+.thread-card {
   position: absolute;
   left: 0;
   top: 0;
@@ -1294,13 +1294,13 @@ body {
   transition: box-shadow 0.2s, transform 0.2s, border-color 0.15s;
 }
 
-.timeline-card:hover {
+.thread-card:hover {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   border-color: var(--border-strong);
   z-index: 5;
 }
 
-.timeline-card-subject {
+.thread-card-subject {
   font-weight: 500;
   font-size: 0.9rem;
   overflow: hidden;
@@ -1309,7 +1309,7 @@ body {
   color: var(--text);
 }
 
-.timeline-card-date {
+.thread-card-date {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
