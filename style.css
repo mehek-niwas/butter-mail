@@ -668,10 +668,11 @@ body {
   min-width: 2rem;
 }
 
-.email-row-scores {
-  font-size: 0.7rem;
-  color: var(--text-dim);
+.email-row-score-combined {
+  font-size: 0.75rem;
+  color: var(--text-muted);
   white-space: nowrap;
+  cursor: help;
 }
 
 /* Email detail modal */

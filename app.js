@@ -1185,12 +1185,13 @@ const VIRTUAL_LIST_OVERSCAN = 5;
 function buildFlatRowHtml(e, isSearchMode, cats, addVirtualClass) {
   const catColor = e.categoryId && cats.meta[e.categoryId] ? cats.meta[e.categoryId].color : '#B8952E';
   const catTitle = e.categoryId && cats.meta[e.categoryId] ? (cats.meta[e.categoryId].name || '') : '';
+  const combinedStr = e.combinedScore != null ? Number(e.combinedScore).toFixed(3) : '—';
+  const denseStr = e.denseScore != null ? Number(e.denseScore).toFixed(2) : '—';
+  const sparseStr = e.sparseScore != null ? Number(e.sparseScore).toFixed(2) : '—';
+  const hoverTitle = 'dense: ' + denseStr + ' | sparse: ' + sparseStr;
   const rankHtml = isSearchMode
     ? '<span class="email-row-rank">#' + String(e.searchRank) + '</span>' +
-      '<span class="email-row-scores">' +
-      'dense: ' + (e.denseScore != null ? Number(e.denseScore).toFixed(2) : '—') + ' | ' +
-      'sparse: ' + (e.sparseScore != null ? Number(e.sparseScore).toFixed(2) : '—') +
-      '</span>'
+      '<span class="email-row-score-combined" title="' + escapeHtml(hoverTitle) + '">' + escapeHtml(combinedStr) + '</span>'
     : '';
   const virtualClass = addVirtualClass ? ' email-row-virtual' : '';
   return '<div class="email-row' + virtualClass + (isSearchMode ? ' email-row-search' : '') + '" data-id="' + escapeHtml(e.id) + '">' +

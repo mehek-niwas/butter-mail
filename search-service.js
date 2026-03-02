@@ -77,7 +77,7 @@ function rrfMerge(denseResults, sparseResults, emails) {
   });
   return Object.entries(scores)
     .sort((a, b) => b[1] - a[1])
-    .map(([id]) => id);
+    .map(([id, combinedScore]) => ({ id, combinedScore }));
 }
 
 /**
@@ -115,12 +115,13 @@ async function emailsBySimilarityToPromptScored(prompt, embeddings, emailIds) {
   return scored;
 }
 
-function attachSearchScores(email, rank, denseScore, sparseScore) {
+function attachSearchScores(email, rank, denseScore, sparseScore, combinedScore) {
   return {
     ...email,
     searchRank: rank,
     denseScore: denseScore != null ? denseScore : null,
-    sparseScore: sparseScore != null ? sparseScore : null
+    sparseScore: sparseScore != null ? sparseScore : null,
+    combinedScore: combinedScore != null ? combinedScore : null
   };
 }
 
@@ -157,7 +158,8 @@ async function fillDenseAndSparseForResults(resultEmails, query, emails, embeddi
   return resultEmails.map((e) => ({
     ...e,
     denseScore: e.denseScore != null ? e.denseScore : (denseMap[e.id] ?? null),
-    sparseScore: e.sparseScore != null ? e.sparseScore : (sparseMap[e.id] ?? null)
+    sparseScore: e.sparseScore != null ? e.sparseScore : (sparseMap[e.id] ?? null),
+    combinedScore: e.combinedScore != null ? e.combinedScore : null
   }));
 }
 
@@ -198,7 +200,7 @@ async function hybridSearch(query, emails, embeddings) {
         (e.subject && e.subject.toLowerCase().includes(q)) ||
         (e.body && e.body.toLowerCase().includes(q))
     );
-    let fallbackResults = filtered.map((e, i) => attachSearchScores(e, i + 1, null, null));
+    let fallbackResults = filtered.map((e, i) => attachSearchScores(e, i + 1, null, null, null));
     fallbackResults = await fillDenseAndSparseForResults(fallbackResults, query, emails, embeddings, {}, null);
     return fallbackResults;
   }
@@ -208,7 +210,7 @@ async function hybridSearch(query, emails, embeddings) {
         const idx = Array.isArray(entry) ? entry[0] : entry;
         const score = Array.isArray(entry) && entry.length > 1 ? entry[1] : null;
         const email = emails[idx];
-        return email ? attachSearchScores(email, rank + 1, null, score) : null;
+        return email ? attachSearchScores(email, rank + 1, null, score, score) : null;
       })
       .filter(Boolean);
     sparseOnly = await fillDenseAndSparseForResults(sparseOnly, query, emails, embeddings, {}, sparseScoreById);
@@ -225,12 +227,12 @@ async function hybridSearch(query, emails, embeddings) {
     return denseOnly;
   }
 
-  const mergedIds = rrfMerge(denseResults, sparseResults, emails);
-  let merged = mergedIds
-    .map((id, rank) => {
+  const mergedItems = rrfMerge(denseResults, sparseResults, emails);
+  let merged = mergedItems
+    .map(({ id, combinedScore }, rank) => {
       const email = byId[id];
       return email
-        ? attachSearchScores(email, rank + 1, denseById[id] ?? null, sparseScoreById[id] ?? null)
+        ? attachSearchScores(email, rank + 1, denseById[id] ?? null, sparseScoreById[id] ?? null, combinedScore)
         : null;
     })
     .filter(Boolean);
