@@ -9,6 +9,6 @@ after failed npm run dist:
 close cursor
 open terminal as adminstrator
 delete dist file
-rmdir C:\Users\mehek\AppData\Local\electron-builder\Cache\winCodeSign -Recurse -Force
-cd D:\projects\email-wrapper\butter-mail
-npm run dist (again)
+rmdir C:\Users\mehek\AppData\Local\electron-builder\Cache\winCodeSign -Recurse -Force ; cd D:\projects\email-wrapper\butter-mail ; npm run dist 
+
+(again)

@@ -5,6 +5,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const { app } = require('electron');
 
 /** Strip HTML tags and decode entities for plain text extraction */
@@ -38,21 +39,15 @@ let pipeline = null;
 
 async function getPipeline() {
   if (pipeline) return pipeline;
-  const { pipeline: createPipeline, env } = await import('@huggingface/transformers');
+  const { pipeline: createPipeline } = await import('@huggingface/transformers');
 
-  // Ensure cache is stored in a writable per-user location (outside app.asar)
-  try {
-    if (env && (env.cacheDir == null || env.cacheDir === './.cache')) {
-      const cacheDir = path.join(app.getPath('userData'), 'transformers-cache');
-      env.cacheDir = cacheDir;
-      env.useFSCache = true;
-      env.useBrowserCache = false;
-    }
-  } catch (_) {
-    // If anything goes wrong configuring cache, fall back to library defaults.
-  }
+  // Use writable per-user cache (outside app.asar). In packaged app, the default
+  // resolves to app.asar/node_modules/.../.cache which is read-only.
+  const cacheDir = path.join(app.getPath('userData'), 'transformers-cache');
+  fs.mkdirSync(cacheDir, { recursive: true });
 
   pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+    cache_dir: cacheDir,
     device: 'auto',
     dtype: 'fp32'
   });

@@ -28,6 +28,10 @@
   "build": {
     "appId": "com.mehekn.buttermail",
     "productName": "butter mail",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "directories": {
       "output": "dist"
     },
