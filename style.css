@@ -1014,30 +1014,237 @@ body {
 /* Compose modal */
 .compose-panel {
   max-width: 35rem;
+  overflow: auto;
 }
 
-.settings-form textarea {
+.compose-editor-toolbar {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.compose-tool-btn {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  border-radius: 0.45rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.compose-tool-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.compose-tool-btn:active {
+  transform: scale(0.98);
+}
+
+.compose-tool-sep {
+  width: 1px;
+  height: 1.2rem;
+  background: var(--border);
+  margin: 0 0.25rem;
+}
+
+.compose-editor {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-family: inherit;
+  min-height: 10rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  color: var(--text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.compose-editor:focus {
+  outline: none;
+  border-color: var(--butter-muted);
+  box-shadow: 0 0 0 2px var(--butter-soft);
+}
+
+.compose-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.compose-editor a {
+  color: var(--butter);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.compose-editor ul,
+.compose-editor ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.compose-attachments {
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.compose-attachments-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.compose-attachments-list {
+  margin-top: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 0.35rem 0.5rem;
+  max-height: 7rem;
+  overflow-y: auto;
+}
+
+.compose-link-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.compose-link-panel {
+  width: min(28rem, 92vw);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 1rem 1rem 0.9rem;
+}
+
+.compose-link-title {
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+}
+
+.compose-link-form label {
+  display: block;
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-muted);
+}
+
+.compose-link-form input {
   width: 100%;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-size: 0.875rem;
-  font-family: inherit;
-  resize: vertical;
-  min-height: 8rem;
   background: var(--bg-card);
   color: var(--text);
 }
 
-.settings-form textarea::placeholder {
-  color: var(--text-dim);
-}
-
-.settings-form textarea:focus {
+.compose-link-form input:focus {
   outline: none;
   border-color: var(--butter-muted);
   box-shadow: 0 0 0 2px var(--butter-soft);
+}
+
+.compose-link-hint {
+  margin-top: -0.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.compose-link-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.compose-attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+.compose-attachment-item:last-child {
+  border-bottom: none;
+}
+
+.compose-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: var(--text);
+  cursor: text;
+}
+
+.compose-attachment-remove {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  opacity: 0.8;
+}
+
+.compose-attachment-actions {
+  display: inline-flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.compose-attachment-rename {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  opacity: 0.8;
+}
+
+.compose-attachment-rename:hover {
+  opacity: 1;
+  color: var(--text);
+  background: rgba(229, 184, 11, 0.10);
+}
+
+.compose-attachment-remove:hover {
+  opacity: 1;
+  color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .compose-status {

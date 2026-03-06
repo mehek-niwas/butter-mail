@@ -1478,7 +1478,7 @@ function formatDate(dateStr) {
 
 const SANITIZE_OPTS = {
   ALLOWED_TAGS: ['p', 'br', 'a', 'strong', 'em', 'u', 'ul', 'ol', 'li', 'blockquote', 'hr', 'img', 'h1', 'h2', 'h3', 'div', 'span'],
-  ALLOWED_ATTR: ['href', 'src', 'alt', 'title']
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel']
 };
 
 function linkify(text) {
@@ -1688,14 +1688,344 @@ settingsForm.addEventListener('submit', async (e) => {
 const composeOverlay = document.getElementById('compose-overlay');
 const composeForm = document.getElementById('compose-form');
 const composeStatus = document.getElementById('compose-status');
+const composeEditor = document.getElementById('compose-body');
+const composeAttachBtn = document.getElementById('compose-attach-btn');
+const composeAttachmentsList = document.getElementById('compose-attachments-list');
+const composeClearAttachmentsBtn = document.getElementById('compose-clear-attachments');
+const composeInsertLinkBtn = document.getElementById('compose-insert-link');
+const composeRenameOverlay = document.getElementById('compose-rename-overlay');
+const composeRenameFilenameInput = document.getElementById('compose-rename-filename');
+const composeRenameCancelBtn = document.getElementById('compose-rename-cancel');
+const composeRenameSaveBtn = document.getElementById('compose-rename-save');
+const composeLinkOverlay = document.getElementById('compose-link-overlay');
+const composeLinkTextInput = document.getElementById('compose-link-text');
+const composeLinkUrlInput = document.getElementById('compose-link-url');
+const composeLinkCancelBtn = document.getElementById('compose-link-cancel');
+const composeLinkInsertBtn = document.getElementById('compose-link-insert');
+
+// Attachments are stored as { path, filename? } so we can override the displayed filename.
+let composeAttachments = [];
+let composeSavedRange = null;
+let composeLinkEditTarget = null;
+let pendingRenameAttachmentPath = '';
+
+function saveComposeSelection() {
+  if (!composeEditor) return;
+  const sel = window.getSelection ? window.getSelection() : null;
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  const common = range.commonAncestorContainer;
+  if (!common) return;
+  // Only save selections that live inside the editor.
+  if (common === composeEditor || composeEditor.contains(common.nodeType === 1 ? common : common.parentElement)) {
+    composeSavedRange = range.cloneRange();
+  }
+}
+
+function restoreComposeSelection() {
+  if (!composeEditor || !composeSavedRange) return;
+  const sel = window.getSelection ? window.getSelection() : null;
+  if (!sel) return;
+  try {
+    sel.removeAllRanges();
+    sel.addRange(composeSavedRange);
+  } catch (_) {}
+}
+
+function getComposePlainText() {
+  if (!composeEditor) return '';
+  return (composeEditor.innerText || '').replace(/\r\n/g, '\n').trim();
+}
+
+function setComposePlainText(text) {
+  if (!composeEditor) return;
+  composeEditor.innerText = text || '';
+}
+
+function execComposeCommand(cmd) {
+  if (!composeEditor) return;
+  // Clicking the toolbar can collapse selection; restore last selection.
+  composeEditor.focus();
+  restoreComposeSelection();
+  try {
+    if (cmd === 'unlink') {
+      unlinkInCompose();
+      return;
+    }
+    document.execCommand(cmd, false, null);
+  } catch (_) {}
+  saveComposeSelection();
+}
+
+function unwrapAnchor(a) {
+  if (!a || a.tagName !== 'A' || !a.parentNode) return;
+  const parent = a.parentNode;
+  while (a.firstChild) parent.insertBefore(a.firstChild, a);
+  parent.removeChild(a);
+}
+
+function findNearestAnchorInCompose(range) {
+  if (!composeEditor || !range) return null;
+  const node = range.commonAncestorContainer;
+  const el = node && (node.nodeType === 1 ? node : node.parentElement);
+  if (!el) return null;
+  const a = el.closest ? el.closest('a') : null;
+  if (a && composeEditor.contains(a)) return a;
+  return null;
+}
+
+function unlinkInCompose() {
+  if (!composeEditor) return;
+  composeEditor.focus();
+  restoreComposeSelection();
+  const sel = window.getSelection ? window.getSelection() : null;
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  const common = range.commonAncestorContainer;
+  if (!common) return;
+  const commonEl = common.nodeType === 1 ? common : common.parentElement;
+  if (!commonEl || !(commonEl === composeEditor || composeEditor.contains(commonEl))) return;
+
+  // If there's no selection, unlink the nearest anchor at the caret.
+  if (range.collapsed) {
+    const a = commonEl.closest ? commonEl.closest('a') : null;
+    if (a && composeEditor.contains(a)) unwrapAnchor(a);
+    saveComposeSelection();
+    return;
+  }
+
+  // Otherwise unlink all anchors that intersect the selection.
+  const anchors = Array.from(composeEditor.querySelectorAll('a'));
+  anchors.forEach((a) => {
+    try {
+      if (range.intersectsNode(a)) unwrapAnchor(a);
+    } catch (_) {}
+  });
+  saveComposeSelection();
+}
+
+function normalizeUrlForLink(raw) {
+  const url = (raw || '').trim();
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^mailto:/i.test(url)) return url;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(url)) return 'mailto:' + url;
+  // Default to https for bare domains.
+  return 'https://' + url.replace(/^\/*/, '');
+}
+
+function openComposeLinkDialog() {
+  if (!composeEditor || !composeLinkOverlay || !composeLinkTextInput || !composeLinkUrlInput || !composeLinkInsertBtn) {
+    // Fallback to old prompt-based flow if dialog isn't present for some reason.
+    insertLinkIntoCompose();
+    return;
+  }
+  saveComposeSelection();
+  const range = composeSavedRange ? composeSavedRange.cloneRange() : null;
+  const selectedText = range ? String(range.toString() || '') : '';
+
+  // If caret is inside an existing link, we will edit it.
+  const existingAnchor = range ? findNearestAnchorInCompose(range) : null;
+  composeLinkEditTarget = existingAnchor || null;
+
+  composeLinkTextInput.value = existingAnchor ? (existingAnchor.textContent || '') : (selectedText || '');
+  composeLinkUrlInput.value = existingAnchor ? (existingAnchor.getAttribute('href') || '') : '';
+  composeLinkInsertBtn.textContent = existingAnchor ? 'Update' : 'Insert';
+
+  composeLinkOverlay.classList.remove('hidden');
+  setTimeout(() => {
+    // Prefer URL if text already exists, otherwise start at text.
+    if (composeLinkTextInput.value && composeLinkUrlInput.value) {
+      composeLinkUrlInput.focus();
+      composeLinkUrlInput.select();
+    } else if (composeLinkTextInput.value) {
+      composeLinkUrlInput.focus();
+    } else {
+      composeLinkTextInput.focus();
+    }
+  }, 0);
+}
+
+function closeComposeLinkDialog() {
+  if (!composeLinkOverlay) return;
+  composeLinkOverlay.classList.add('hidden');
+  composeLinkEditTarget = null;
+  // Return focus to editor so keyboard selection works again.
+  if (composeEditor) {
+    setTimeout(() => composeEditor.focus(), 0);
+  }
+}
+
+function applyComposeLinkFromDialog() {
+  if (!composeEditor || !composeLinkTextInput || !composeLinkUrlInput) return;
+  const label = (composeLinkTextInput.value || '').trim();
+  const rawUrl = (composeLinkUrlInput.value || '').trim();
+  const url = normalizeUrlForLink(rawUrl);
+  if (!url) {
+    composeLinkUrlInput.focus();
+    return;
+  }
+
+  composeEditor.focus();
+  restoreComposeSelection();
+  const sel = window.getSelection ? window.getSelection() : null;
+  const range = composeSavedRange ? composeSavedRange.cloneRange() : null;
+  if (!sel || !range) return;
+
+  // Update existing link if we're inside one.
+  if (composeLinkEditTarget && composeEditor.contains(composeLinkEditTarget)) {
+    composeLinkEditTarget.setAttribute('href', url);
+    composeLinkEditTarget.setAttribute('target', '_blank');
+    composeLinkEditTarget.setAttribute('rel', 'noopener');
+    if (label) {
+      composeLinkEditTarget.textContent = label;
+    }
+    closeComposeLinkDialog();
+    saveComposeSelection();
+    return;
+  }
+
+  const selectedText = String(range.toString() || '');
+  const hasSelection = !!(selectedText && selectedText.trim());
+  const a = document.createElement('a');
+  a.setAttribute('href', url);
+  a.setAttribute('target', '_blank');
+  a.setAttribute('rel', 'noopener');
+
+  try {
+    if (hasSelection) {
+      const contents = range.extractContents();
+      a.appendChild(contents);
+      // If user provided label explicitly, replace selection with label.
+      if (label) {
+        a.textContent = label;
+      }
+      range.insertNode(a);
+      const newRange = document.createRange();
+      newRange.selectNodeContents(a);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      a.textContent = label || url;
+      range.insertNode(a);
+      range.setStartAfter(a);
+      range.setEndAfter(a);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  } catch (_) {}
+
+  closeComposeLinkDialog();
+  saveComposeSelection();
+}
+
+function insertLinkIntoCompose() {
+  if (!composeEditor) return;
+  composeEditor.focus();
+  restoreComposeSelection();
+  // Save selection before prompts (prompts can steal focus).
+  saveComposeSelection();
+  const selectedText = composeSavedRange ? String(composeSavedRange.toString() || '') : '';
+  const rawUrl = prompt('Enter URL (or email address):', 'https://');
+  if (!rawUrl) return;
+  const url = normalizeUrlForLink(rawUrl);
+  if (!url) return;
+  try {
+    composeEditor.focus();
+    restoreComposeSelection();
+    const sel = window.getSelection ? window.getSelection() : null;
+    if (!sel || sel.rangeCount === 0 || !composeSavedRange) return;
+    const range = composeSavedRange.cloneRange();
+    const common = range.commonAncestorContainer;
+    const commonEl = common && (common.nodeType === 1 ? common : common.parentElement);
+    if (!commonEl || !(commonEl === composeEditor || composeEditor.contains(commonEl))) return;
+
+    const a = document.createElement('a');
+    a.setAttribute('href', url);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+
+    if (range.collapsed || !(selectedText && selectedText.trim())) {
+      const label = prompt('Link text:', url) || url;
+      a.textContent = label;
+      range.insertNode(a);
+      // Move caret after inserted link.
+      range.setStartAfter(a);
+      range.setEndAfter(a);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      // Wrap selected contents.
+      const contents = range.extractContents();
+      a.appendChild(contents);
+      range.insertNode(a);
+      // Reselect the created link for convenience.
+      const newRange = document.createRange();
+      newRange.selectNodeContents(a);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+  } catch (_) {}
+  saveComposeSelection();
+}
+
+function renderComposeAttachments() {
+  if (!composeAttachmentsList || !composeClearAttachmentsBtn) return;
+  const list = Array.isArray(composeAttachments) ? composeAttachments : [];
+  const normalized = [];
+  const seen = new Set();
+  list.forEach((item) => {
+    if (!item) return;
+    const p = typeof item === 'string' ? item : item.path;
+    const pathStr = typeof p === 'string' ? p.trim() : '';
+    if (!pathStr) return;
+    if (seen.has(pathStr)) return;
+    seen.add(pathStr);
+    const filename = item && typeof item === 'object' && typeof item.filename === 'string' ? item.filename.trim() : '';
+    normalized.push({ path: pathStr, filename: filename || undefined });
+  });
+  composeAttachments = normalized;
+  if (normalized.length === 0) {
+    composeAttachmentsList.classList.add('hidden');
+    composeAttachmentsList.innerHTML = '';
+    composeClearAttachmentsBtn.classList.add('hidden');
+    return;
+  }
+  composeClearAttachmentsBtn.classList.remove('hidden');
+  composeAttachmentsList.classList.remove('hidden');
+  composeAttachmentsList.innerHTML = normalized.map((att) => {
+    const parts = String(att.path).split(/[/\\]/);
+    const baseName = parts[parts.length - 1] || att.path;
+    const displayName = att.filename || baseName;
+    const title = att.filename ? (att.path + '\nShown as: ' + att.filename) : att.path;
+    return '<div class="compose-attachment-item" data-path="' + escapeHtml(att.path) + '">' +
+      '<span class="compose-attachment-name" title="' + escapeHtml(title) + '">' + escapeHtml(displayName) + '</span>' +
+      '<div class="compose-attachment-actions">' +
+      '<button type="button" class="compose-attachment-rename" title="Rename" aria-label="Rename attachment">&#9998;</button>' +
+      '<button type="button" class="compose-attachment-remove" title="Remove" aria-label="Remove attachment">&#215;</button>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+
+}
 
 function openCompose(opts = {}) {
   document.getElementById('compose-to').value = opts.to || '';
   document.getElementById('compose-subject').value = opts.subject || '';
-  document.getElementById('compose-body').value = opts.body || '';
+  setComposePlainText(opts.body || '');
+  composeAttachments = [];
+  composeSavedRange = null;
+  composeLinkEditTarget = null;
+  renderComposeAttachments();
   composeStatus.textContent = '';
   composeStatus.className = 'compose-status';
   composeOverlay.classList.remove('hidden');
+  setTimeout(() => {
+    if (composeEditor) {
+      composeEditor.focus();
+      saveComposeSelection();
+    }
+  }, 0);
 }
 
 function closeCompose() {
@@ -1734,24 +2064,31 @@ composeForm.addEventListener('submit', async (e) => {
   if (typeof window.electronAPI === 'undefined') return;
   const to = document.getElementById('compose-to').value.trim();
   const subject = document.getElementById('compose-subject').value.trim();
-  const body = document.getElementById('compose-body').value.trim();
+  const bodyText = getComposePlainText();
+  const bodyHtmlRaw = composeEditor ? (composeEditor.innerHTML || '') : '';
   const butterMailUrl = 'https://github.com/mehek-niwas/butter-mail';
   const signatureText = '\n\n- sent with butter mail ' + butterMailUrl;
-  const text = body ? body + signatureText : signatureText.trim();
+  const text = bodyText ? bodyText + signatureText : signatureText.trim();
 
-  const urlRe = /(https?:\/\/[^\s<]+)/g;
-  const bodyHtml = escapeHtml(body)
-    .replace(urlRe, (m) => '<a href="' + escapeHtml(m) + '">' + escapeHtml(m) + '</a>')
-    .replace(/\n/g, '<br>');
-  const signatureHtml = '- sent with <a href="' + butterMailUrl + '">butter mail</a>';
-  const html = (body ? bodyHtml + '<br><br>' : '') + signatureHtml;
+  const signatureHtml = '- sent with <a href="' + butterMailUrl + '" target="_blank" rel="noopener">butter mail</a>';
+  let htmlBody = '';
+  if (typeof DOMPurify !== 'undefined') {
+    htmlBody = DOMPurify.sanitize(bodyHtmlRaw, SANITIZE_OPTS);
+  } else {
+    htmlBody = escapeHtml(bodyText).replace(/\n/g, '<br>');
+  }
+  const html = (htmlBody && htmlBody.trim() ? htmlBody + '<br><br>' : '') + signatureHtml;
+
   composeStatus.textContent = 'Sending...';
   composeStatus.className = 'compose-status';
-  const result = await window.electronAPI.smtp.send({ to, subject, text, html });
+  const result = await window.electronAPI.smtp.send({ to, subject, text, html, attachments: composeAttachments });
   if (result.ok) {
     composeStatus.textContent = 'Sent.';
     composeStatus.className = 'compose-status success';
     composeForm.reset();
+    if (composeEditor) composeEditor.innerHTML = '';
+    composeAttachments = [];
+    renderComposeAttachments();
     // After a successful send, refresh from IMAP so the new sent email appears
     try {
       if (typeof window.electronAPI !== 'undefined' && window.electronAPI.imap && typeof fetchFromImap === 'function') {
@@ -1766,6 +2103,197 @@ composeForm.addEventListener('submit', async (e) => {
     composeStatus.className = 'compose-status error';
   }
 });
+
+// Compose editor toolbar + attachments
+// Prevent toolbar buttons from stealing selection.
+document.querySelectorAll('.compose-tool-btn').forEach((btn) => {
+  btn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    saveComposeSelection();
+  });
+});
+document.querySelectorAll('.compose-tool-btn[data-cmd]').forEach((btn) => {
+  btn.addEventListener('click', () => execComposeCommand(btn.dataset.cmd));
+});
+if (composeInsertLinkBtn) {
+  composeInsertLinkBtn.addEventListener('click', openComposeLinkDialog);
+}
+if (composeAttachBtn) {
+  composeAttachBtn.addEventListener('click', async () => {
+    if (typeof window.electronAPI === 'undefined' || !window.electronAPI.dialog || !window.electronAPI.dialog.pickAttachments) return;
+    const res = await window.electronAPI.dialog.pickAttachments();
+    if (res && res.ok && Array.isArray(res.filePaths) && res.filePaths.length) {
+      const next = res.filePaths
+        .filter((p) => typeof p === 'string' && p.trim())
+        .map((p) => ({ path: p.trim() }));
+      composeAttachments = [...composeAttachments, ...next];
+      renderComposeAttachments();
+    }
+  });
+}
+if (composeClearAttachmentsBtn) {
+  composeClearAttachmentsBtn.addEventListener('click', () => {
+    composeAttachments = [];
+    renderComposeAttachments();
+  });
+}
+
+// Attachments list interactions (delegate once; survives rerenders)
+if (composeAttachmentsList) {
+  function openRenameAttachmentDialog(pathStr) {
+    const p = typeof pathStr === 'string' ? pathStr : '';
+    if (!p) return;
+    const current = composeAttachments.find((x) => x && x.path === p);
+    if (!current) return;
+    // If modal isn't available for some reason, fallback to prompt.
+    if (!composeRenameOverlay || !composeRenameFilenameInput || !composeRenameSaveBtn) {
+      const parts = String(p).split(/[/\\]/);
+      const base = parts[parts.length - 1] || p;
+      const currentName = current.filename ? current.filename : base;
+      const next = prompt('Attachment filename (what the recipient will see):', currentName);
+      if (next == null) return;
+      const newName = String(next).trim();
+      current.filename = newName ? newName : undefined;
+      renderComposeAttachments();
+      return;
+    }
+
+    pendingRenameAttachmentPath = p;
+    const parts = String(p).split(/[/\\]/);
+    const base = parts[parts.length - 1] || p;
+    composeRenameFilenameInput.value = current.filename ? current.filename : base;
+    composeRenameSaveBtn.textContent = 'Save';
+    composeRenameOverlay.classList.remove('hidden');
+    setTimeout(() => {
+      composeRenameFilenameInput.focus();
+      composeRenameFilenameInput.select();
+    }, 0);
+  }
+
+  function closeRenameAttachmentDialog() {
+    if (!composeRenameOverlay) return;
+    composeRenameOverlay.classList.add('hidden');
+    pendingRenameAttachmentPath = '';
+  }
+
+  function saveRenameAttachmentDialog() {
+    if (!composeRenameFilenameInput) return;
+    const p = pendingRenameAttachmentPath;
+    if (!p) return;
+    const current = composeAttachments.find((x) => x && x.path === p);
+    if (!current) {
+      closeRenameAttachmentDialog();
+      return;
+    }
+    const newName = String(composeRenameFilenameInput.value || '').trim();
+    current.filename = newName ? newName : undefined;
+    closeRenameAttachmentDialog();
+    renderComposeAttachments();
+  }
+
+  // Remove button (bubble phase is fine)
+  composeAttachmentsList.addEventListener('click', (e) => {
+    const renameBtn = e.target.closest ? e.target.closest('.compose-attachment-rename') : null;
+    if (renameBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const row = renameBtn.closest('.compose-attachment-item');
+      const p = row && row.dataset ? row.dataset.path : '';
+      openRenameAttachmentDialog(p);
+      return;
+    }
+
+    const removeBtn = e.target.closest ? e.target.closest('.compose-attachment-remove') : null;
+    if (!removeBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const row = removeBtn.closest('.compose-attachment-item');
+    const p = row && row.dataset ? row.dataset.path : '';
+    if (!p) return;
+    composeAttachments = (composeAttachments || []).filter((x) => x && x.path !== p);
+    renderComposeAttachments();
+  });
+
+  // Rename on double-click (capture phase makes this very reliable in Chromium)
+  composeAttachmentsList.addEventListener('dblclick', (e) => {
+    const row = e.target.closest ? e.target.closest('.compose-attachment-item') : null;
+    if (!row) return;
+    if (e.target.closest && e.target.closest('.compose-attachment-remove')) return;
+    if (e.target.closest && e.target.closest('.compose-attachment-rename')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const p = row.dataset ? row.dataset.path : '';
+    openRenameAttachmentDialog(p);
+  }, true);
+
+  // Rename modal events
+  if (composeRenameOverlay) {
+    composeRenameOverlay.addEventListener('click', (e) => {
+      if (e.target === composeRenameOverlay) closeRenameAttachmentDialog();
+    });
+  }
+  if (composeRenameCancelBtn) {
+    composeRenameCancelBtn.addEventListener('click', closeRenameAttachmentDialog);
+  }
+  if (composeRenameSaveBtn) {
+    composeRenameSaveBtn.addEventListener('click', saveRenameAttachmentDialog);
+  }
+  if (composeRenameFilenameInput) {
+    composeRenameFilenameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeRenameAttachmentDialog();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveRenameAttachmentDialog();
+      }
+    });
+  }
+}
+
+if (composeEditor) {
+  composeEditor.addEventListener('keyup', saveComposeSelection);
+  composeEditor.addEventListener('mouseup', saveComposeSelection);
+  composeEditor.addEventListener('focus', saveComposeSelection);
+  document.addEventListener('selectionchange', () => {
+    // Track selection while the editor is active.
+    const active = document.activeElement;
+    if (active === composeEditor) saveComposeSelection();
+  });
+}
+
+// Link dialog events
+if (composeLinkOverlay) {
+  composeLinkOverlay.addEventListener('mousedown', (e) => {
+    // Prevent editor selection loss when clicking inside the dialog.
+    if (e.target === composeLinkOverlay) e.preventDefault();
+  });
+  composeLinkOverlay.addEventListener('click', (e) => {
+    if (e.target === composeLinkOverlay) closeComposeLinkDialog();
+  });
+}
+if (composeLinkCancelBtn) {
+  composeLinkCancelBtn.addEventListener('click', closeComposeLinkDialog);
+}
+if (composeLinkInsertBtn) {
+  composeLinkInsertBtn.addEventListener('click', applyComposeLinkFromDialog);
+}
+if (composeLinkTextInput) {
+  composeLinkTextInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeComposeLinkDialog();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyComposeLinkFromDialog();
+    }
+  });
+}
+if (composeLinkUrlInput) {
+  composeLinkUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeComposeLinkDialog();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyComposeLinkFromDialog();
+    }
+  });
+}
 
 // --- Initial load ---
 setupClusterRenameModal();

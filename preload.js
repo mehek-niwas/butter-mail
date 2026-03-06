@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  dialog: {
+    pickAttachments: () => ipcRenderer.invoke('dialog:pickAttachments')
+  },
   imap: {
     getConfig: () => ipcRenderer.invoke('imap:getConfig'),
     saveConfig: (config) => ipcRenderer.invoke('imap:saveConfig', config),

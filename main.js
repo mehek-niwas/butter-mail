@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { ImapFlow } = require('imapflow');
@@ -122,6 +122,22 @@ app.on('window-all-closed', () => {
 
 // IPC handlers
 ipcMain.handle('imap:getConfig', () => loadConfig());
+
+ipcMain.handle('dialog:pickAttachments', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { ok: false, error: 'Window not ready' };
+  }
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Attach files',
+      properties: ['openFile', 'multiSelections']
+    });
+    if (result.canceled) return { ok: true, filePaths: [] };
+    return { ok: true, filePaths: Array.isArray(result.filePaths) ? result.filePaths : [] };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
 
 ipcMain.handle('imap:saveConfig', (_, config) => {
   saveConfig(config);
@@ -567,7 +583,7 @@ ipcMain.handle('embeddings:promptClusterScored', async (_, prompt, embeddings, e
   }
 });
 
-ipcMain.handle('smtp:send', async (_, { to, subject, text, html, replyToMessageId }) => {
+ipcMain.handle('smtp:send', async (_, { to, subject, text, html, replyToMessageId, attachments }) => {
   const config = loadConfig();
   const smtpOpts = getSmtpOptions(config);
   if (!smtpOpts) {
@@ -592,6 +608,38 @@ ipcMain.handle('smtp:send', async (_, { to, subject, text, html, replyToMessageI
     };
     if (replyToMessageId) mailOptions.references = replyToMessageId;
     if (replyToMessageId) mailOptions.inReplyTo = replyToMessageId;
+
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      const items = attachments
+        .map((a) => {
+          if (typeof a === 'string') return { path: a.trim() };
+          if (a && typeof a === 'object') {
+            const p = typeof a.path === 'string' ? a.path.trim() : '';
+            const filename = typeof a.filename === 'string' ? a.filename.trim() : '';
+            return { path: p, filename: filename || undefined };
+          }
+          return { path: '' };
+        })
+        .filter((x) => x.path)
+        .slice(0, 25);
+
+      const missing = items.filter((it) => {
+        try {
+          return !fs.existsSync(it.path) || !fs.statSync(it.path).isFile();
+        } catch {
+          return true;
+        }
+      });
+      if (missing.length > 0) {
+        return { ok: false, error: 'Attachment(s) not found: ' + missing.map((m) => m.path).join(', ') };
+      }
+
+      mailOptions.attachments = items.map((it) => ({
+        path: it.path,
+        filename: it.filename || undefined
+      }));
+    }
+
     await transporter.sendMail(mailOptions);
     return { ok: true };
   } catch (err) {

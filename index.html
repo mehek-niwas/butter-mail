@@ -175,7 +175,60 @@
                 <label for="compose-subject">Subject</label>
                 <input type="text" id="compose-subject" name="subject" placeholder="Subject" />
                 <label for="compose-body">Message</label>
-                <textarea id="compose-body" name="body" rows="10" placeholder="Write your message..."></textarea>
+                <div class="compose-editor-toolbar" role="toolbar" aria-label="Message formatting">
+                  <button type="button" class="compose-tool-btn" data-cmd="bold" title="Bold"><strong>B</strong></button>
+                  <button type="button" class="compose-tool-btn" data-cmd="italic" title="Italic"><em>I</em></button>
+                  <button type="button" class="compose-tool-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+                  <span class="compose-tool-sep" aria-hidden="true"></span>
+                  <button type="button" class="compose-tool-btn" data-cmd="insertUnorderedList" title="Bulleted list">• list</button>
+                  <button type="button" class="compose-tool-btn" data-cmd="insertOrderedList" title="Numbered list">1. list</button>
+                  <span class="compose-tool-sep" aria-hidden="true"></span>
+                  <button type="button" class="compose-tool-btn" id="compose-insert-link" title="Insert link">link</button>
+                  <button type="button" class="compose-tool-btn" data-cmd="unlink" title="Remove link">unlink</button>
+                </div>
+                <div id="compose-body" class="compose-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message body" data-placeholder="Write your message..."></div>
+
+                <div class="compose-attachments">
+                  <div class="compose-attachments-row">
+                    <button type="button" class="subtab-btn" id="compose-attach-btn">Attach files</button>
+                    <button type="button" class="subtab-btn hidden" id="compose-clear-attachments">Clear</button>
+                  </div>
+                  <div class="compose-attachments-list hidden" id="compose-attachments-list" aria-label="Attachments"></div>
+                </div>
+
+                <!-- Rename attachment modal (inside compose) -->
+                <div class="compose-link-overlay hidden" id="compose-rename-overlay" role="dialog" aria-modal="true" aria-label="Rename attachment">
+                  <div class="compose-link-panel">
+                    <h3 class="compose-link-title">Rename attachment</h3>
+                    <div class="compose-link-form">
+                      <label for="compose-rename-filename">Filename</label>
+                      <input type="text" id="compose-rename-filename" placeholder="example.pdf" />
+                      <p class="compose-link-hint">This changes what the recipient sees (the original file is not renamed).</p>
+                      <div class="compose-link-actions">
+                        <button type="button" class="subtab-btn" id="compose-rename-cancel">Cancel</button>
+                        <button type="button" class="settings-save" id="compose-rename-save">Save</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Insert link modal (inside compose) -->
+                <div class="compose-link-overlay hidden" id="compose-link-overlay" role="dialog" aria-modal="true" aria-label="Insert link">
+                  <div class="compose-link-panel">
+                    <h3 class="compose-link-title">Insert link</h3>
+                    <div class="compose-link-form">
+                      <label for="compose-link-text">Text</label>
+                      <input type="text" id="compose-link-text" placeholder="What the link should say" />
+                      <label for="compose-link-url">Link address</label>
+                      <input type="text" id="compose-link-url" placeholder="https://example.com" />
+                      <p class="compose-link-hint">Tip: you can paste an email address too.</p>
+                      <div class="compose-link-actions">
+                        <button type="button" class="subtab-btn" id="compose-link-cancel">Cancel</button>
+                        <button type="button" class="settings-save" id="compose-link-insert">Insert</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <p class="compose-status" id="compose-status"></p>
                 <div class="settings-actions">
                   <button type="button" class="subtab-btn" id="compose-cancel">Cancel</button>
