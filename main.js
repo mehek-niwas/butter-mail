@@ -69,6 +69,33 @@ async function safeLogout(client, label) {
   }
 }
 
+async function findMailboxByUse(client, specialUse, namePatterns) {
+  let mailboxes = [];
+  try {
+    mailboxes = await client.list();
+  } catch {
+    return null;
+  }
+  const use = String(specialUse || '').toUpperCase();
+  const byFlag = mailboxes.find((box) => {
+    const flags = Array.from(box && box.flags ? box.flags : []).map((flag) => String(flag).toUpperCase());
+    const advertised = box && box.specialUse ? String(box.specialUse).toUpperCase() : '';
+    return flags.includes(use) || advertised === use;
+  });
+  if (byFlag && (byFlag.path || byFlag.name)) return byFlag.path || byFlag.name;
+  const candidates = mailboxes.map((box) => String(box.path || box.name || '').toLowerCase());
+  const patterns = Array.isArray(namePatterns) ? namePatterns : [];
+  for (const pattern of patterns) {
+    const normalized = String(pattern || '').toLowerCase();
+    const index = candidates.findIndex((name) => name === normalized || name.endsWith('/' + normalized) || name.endsWith('.' + normalized));
+    if (index >= 0) {
+      const box = mailboxes[index];
+      return box.path || box.name || null;
+    }
+  }
+  return null;
+}
+
 async function parseEmlFromSource(buffer) {
   if (!buffer) return { from: '', to: '', subject: '(no subject)', date: '', body: '', bodyIsHtml: false, fromEmail: '', toDisplay: '', messageId: '', inReplyTo: '', references: '' };
   try {
@@ -111,7 +138,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile('landing.html');
+  mainWindow.loadFile('index.html');
 }
 
 app.whenReady().then(createWindow);
@@ -484,6 +511,41 @@ ipcMain.handle('imap:fetchBodies', async (_, uids) => {
     return { ok: false, error: err.message || String(err), bodies: {} };
   } finally {
     await safeLogout(client, 'imap:fetchBodies');
+  }
+});
+
+ipcMain.handle('imap:delete', async (_, payload = {}) => {
+  const config = loadConfig();
+  if (!config || !config.host || !config.user || !config.pass) {
+    return { ok: false, error: 'IMAP not configured' };
+  }
+  const uid = Number(payload.uid);
+  if (!uid) {
+    return { ok: false, error: 'A valid UID is required.' };
+  }
+  const mailbox = String(payload.mailbox || 'INBOX');
+  const client = createImapClient(config);
+  client.on('error', (err) => {
+    console.error('[butter-mail] imap:delete client error:', err);
+  });
+  let lock = null;
+  try {
+    await client.connect();
+    const trashMailbox = await findMailboxByUse(client, '\\TRASH', ['trash', 'deleted items', 'deleted messages', 'bin']);
+    lock = await client.getMailboxLock(mailbox);
+    if (trashMailbox && trashMailbox !== mailbox) {
+      await client.messageMove(String(uid), trashMailbox, { uid: true });
+      return { ok: true, action: 'moved-to-trash', mailbox: trashMailbox };
+    }
+    await client.messageDelete(String(uid), { uid: true });
+    return { ok: true, action: 'deleted', mailbox };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  } finally {
+    try {
+      if (lock) lock.release();
+    } catch (_) {}
+    await safeLogout(client, 'imap:delete');
   }
 });
 

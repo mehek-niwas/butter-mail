@@ -4,256 +4,114 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>butter mail</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Press+Start+2P&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
-    <div class="app">
-      <!-- Content row: Sidebar | Main -->
-      <div class="app-body">
-        <aside class="sidebar">
-          <h1 class="logo">
-            <div class="logo-imgs">
-              <img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="logo-img" />
-              <img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden />
-            </div>
-            <span class="logo-text">butter mail</span>
-          </h1>
-          <p class="welcome">welcome to your spread, mehek!</p>
-          <nav class="nav-buttons">
-            <button type="button" class="settings-btn" id="settings-btn" title="IMAP settings">&#9881;</button>
-          </nav>
-          <div class="categories-list" id="subtab-bar"></div>
-        </aside>
-
-        <main class="main">
-          <!-- Search bar -->
-          <div class="search-bar">
-            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="text" class="search-input" placeholder="search" />
+  <body data-theme="dark">
+    <div class="app-shell">
+      <header class="browser-chrome">
+        <div class="chrome-brand">
+          <img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="brand-logo" />
+          <div class="brand-copy">
+            <span class="brand-name">butter mail</span>
+            <span class="brand-subtitle">calm email browsing</span>
           </div>
-          <!-- View tabs: List | Graph -->
-          <div class="view-tabs" id="view-tabs">
-            <button type="button" class="view-tab active" data-view="list">List</button>
-            <button type="button" class="view-tab" data-view="graph">Graph</button>
+        </div>
+        <div class="tab-strip-wrap">
+          <div class="tab-strip" id="tab-strip" aria-label="Open tabs"></div>
+        </div>
+        <div class="chrome-actions">
+          <button type="button" class="chrome-btn" id="header-compose-btn" data-action="open-compose-tab">Compose</button>
+          <button type="button" class="chrome-btn" id="theme-toggle-btn" data-action="toggle-theme">Light</button>
+          <button type="button" class="chrome-btn" id="settings-btn" data-action="open-settings">Settings</button>
+        </div>
+      </header>
+
+      <div class="bookmark-bar-wrap">
+        <div class="bookmark-bar" id="bookmark-bar" aria-label="Bookmarks"></div>
+        <button type="button" class="bookmark-create-btn" id="bookmark-create-btn" data-action="open-cluster-editor" title="Create cluster" aria-label="Create cluster">+</button>
+      </div>
+
+      <main class="workspace">
+        <div class="view-host" id="view-host" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="floating-tooltip hidden" id="floating-tooltip"></div>
+    <div class="bookmark-context-menu hidden" id="bookmark-context-menu"></div>
+
+    <div class="overlay hidden" id="settings-overlay">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">IMAP settings</h2>
+            <p class="modal-copy">Gmail: `imap.gmail.com:993` with an app password. Outlook: `outlook.office365.com:993`.</p>
           </div>
-
-          <!-- Import + Compose + Compute embeddings + Create cluster -->
-          <div class="import-section" id="import-section">
-            <button type="button" class="compose-btn" id="compose-btn" title="New email">&#9993; compose</button>
-            <button type="button" class="refresh-btn" id="refresh-btn" title="Fetch from IMAP">&#8635; refresh</button>
-            <button type="button" class="compute-embeddings-btn" id="compute-embeddings-btn" title="Compute embeddings, PCA and categories">compute embeddings</button>
-            <button type="button" class="recluster-btn" id="recluster-btn" title="Re-run DBSCAN clustering (keeps your prompt clusters)">re-cluster</button>
-            <div class="prompt-cluster-row">
-              <input type="text" id="prompt-cluster-input" class="prompt-cluster-input" placeholder="Create cluster from prompt (e.g. application)" />
-              <button type="button" class="prompt-cluster-btn" id="prompt-cluster-btn" title="Create a cluster of emails matching this prompt">create cluster</button>
-            </div>
-            <span class="progress-text" id="progress-text"></span>
+          <button type="button" class="modal-close" data-action="close-overlay" data-overlay-id="settings-overlay" aria-label="Close settings">&times;</button>
+        </div>
+        <form class="modal-form" id="settings-form">
+          <label for="settings-host">Host</label>
+          <input id="settings-host" name="host" type="text" placeholder="imap.gmail.com" required />
+          <label for="settings-port">Port</label>
+          <input id="settings-port" name="port" type="number" value="993" />
+          <label for="settings-user">Email</label>
+          <input id="settings-user" name="user" type="email" placeholder="you@example.com" required />
+          <label for="settings-pass">Password / App Password</label>
+          <input id="settings-pass" name="pass" type="password" required />
+          <div class="modal-actions">
+            <button type="button" class="secondary-btn" id="settings-test">Test connection</button>
+            <button type="submit" class="primary-btn">Save</button>
           </div>
+          <p class="modal-status" id="settings-status"></p>
+        </form>
+      </div>
+    </div>
 
-          <!-- List view: email list + inline email detail -->
-          <div class="content-panel view-panel list-view-layout" id="panel-list">
-            <div class="email-list-column">
-              <div class="email-list-toolbar">
-                <label class="thread-toggle">
-                  <input type="checkbox" id="thread-view-checkbox" />
-                  <span>Thread view</span>
-                </label>
-                <button type="button" class="load-more-btn" id="load-more-btn" title="Load older emails">Load more</button>
-              </div>
-              <div class="email-list" id="email-list"></div>
-            </div>
-            <div class="email-detail-column">
-              <div class="email-detail-inline" id="email-detail-inline">
-                <div class="email-detail-inline-placeholder" id="email-detail-inline-placeholder">
-                  Select an email
-                </div>
-                <div class="email-detail-inline-content hidden" id="email-detail-inline-content">
-                  <div class="email-detail-header">
-                    <h2 class="email-detail-subject" id="email-detail-inline-subject"></h2>
-                    <div class="email-detail-meta-block">
-                      <div class="email-detail-meta-row"><span class="email-detail-meta-label">From</span><span id="email-detail-inline-from"></span></div>
-                      <div class="email-detail-meta-row"><span class="email-detail-meta-label">To</span><span id="email-detail-inline-to"></span></div>
-                      <div class="email-detail-meta-row"><span class="email-detail-meta-label">Date</span><span id="email-detail-inline-date"></span></div>
-                    </div>
-                    <button type="button" class="reply-inline-btn" id="reply-inline-btn" title="Reply">&#9993; Reply</button>
-                  </div>
-                  <div class="email-detail-body" id="email-detail-inline-body"></div>
-                </div>
-              </div>
-            </div>
+    <div class="overlay hidden" id="cluster-editor-overlay">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="cluster-editor-title">Create cluster</h2>
+            <p class="modal-copy" id="cluster-editor-copy">Create a user-managed bookmark for email triage.</p>
           </div>
-
-          <!-- Graph view (3D) -->
-          <div class="content-panel view-panel hidden" id="panel-graph">
-            <div class="graph-container" id="graph-container">
-              <canvas id="graph-canvas"></canvas>
-              <div class="graph-axis-legend">
-                <span class="graph-axis-label graph-axis-x">X</span>
-                <span class="graph-axis-label graph-axis-y">Y</span>
-                <span class="graph-axis-label graph-axis-z">Z</span>
-              </div>
-              <div class="graph-coords-legend" id="graph-coords">X: — Y: — Z: —</div>
-              <div class="graph-tooltip hidden" id="graph-tooltip"></div>
-            </div>
+          <button type="button" class="modal-close" data-action="close-overlay" data-overlay-id="cluster-editor-overlay" aria-label="Close cluster editor">&times;</button>
+        </div>
+        <form class="modal-form" id="cluster-editor-form">
+          <input type="hidden" id="cluster-editor-bookmark-id" />
+          <label for="cluster-editor-name">Name</label>
+          <input id="cluster-editor-name" type="text" maxlength="60" required />
+          <label for="cluster-editor-description">Description</label>
+          <textarea id="cluster-editor-description" rows="4" placeholder="Optional description shown in bookmark tooltips."></textarea>
+          <div class="modal-actions">
+            <button type="button" class="secondary-btn" data-action="close-overlay" data-overlay-id="cluster-editor-overlay">Cancel</button>
+            <button type="submit" class="primary-btn" id="cluster-editor-submit">Save</button>
           </div>
+        </form>
+      </div>
+    </div>
 
-          <!-- Settings modal -->
-          <div class="email-detail-overlay hidden" id="settings-overlay">
-            <div class="email-detail-panel settings-panel">
-              <button type="button" class="email-detail-close" id="settings-close">&#215;</button>
-              <h2 class="settings-title">IMAP settings</h2>
-              <p class="settings-hint">Gmail: imap.gmail.com:993 (use App Password). Outlook: outlook.office365.com:993</p>
-              <form class="settings-form" id="settings-form">
-                <label>Host</label>
-                <input type="text" name="host" placeholder="imap.gmail.com" required />
-                <label>Port</label>
-                <input type="number" name="port" placeholder="993" value="993" />
-                <label>Email</label>
-                <input type="email" name="user" placeholder="you@gmail.com" required />
-                <label>Password / App Password</label>
-                <input type="password" name="pass" placeholder="&#149;&#149;&#149;&#149;&#149;&#149;&#149;&#149;" required />
-                <div class="settings-actions">
-                  <button type="button" class="settings-test" id="settings-test">test connection</button>
-                  <button type="submit" class="settings-save">save</button>
-                </div>
-              </form>
-              <p class="settings-status" id="settings-status"></p>
-            </div>
+    <div class="overlay hidden" id="cluster-threshold-overlay">
+      <div class="modal-panel modal-panel-wide">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="cluster-threshold-title">Create cluster</h2>
+            <p class="modal-copy" id="cluster-threshold-hint">Review the suggested matches, click rows to include or exclude them, and adjust the threshold.</p>
           </div>
-
-          <!-- Create cluster modal (view results, then set threshold) -->
-          <div class="email-detail-overlay hidden" id="cluster-threshold-overlay">
-            <div class="email-detail-panel settings-panel cluster-threshold-panel">
-              <button type="button" class="email-detail-close" id="cluster-threshold-close">&#215;</button>
-              <h2 class="settings-title" id="cluster-threshold-title">Create cluster</h2>
-              <p class="settings-hint" id="cluster-threshold-hint">Matched results (by similarity). Green = in cluster, red = out. Click a row to include or exclude it. Set threshold below to change the default cutoff.</p>
-              <div class="cluster-results-list" id="cluster-threshold-results"></div>
-              <div class="cluster-threshold-row">
-                <label for="cluster-threshold-slider">Threshold</label>
-                <input type="range" id="cluster-threshold-slider" min="0" max="1" step="0.05" value="0.3" />
-                <span class="cluster-threshold-value" id="cluster-threshold-value">0.30</span>
-              </div>
-              <p class="cluster-threshold-count" id="cluster-threshold-count">0 emails in cluster</p>
-              <div class="settings-actions">
-                <button type="button" class="settings-save" id="cluster-threshold-create">Create cluster</button>
-                <button type="button" class="subtab-btn" id="cluster-threshold-cancel">Cancel</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Cluster rename modal -->
-          <div class="email-detail-overlay hidden" id="cluster-rename-overlay">
-            <div class="email-detail-panel settings-panel cluster-rename-panel">
-              <button type="button" class="email-detail-close" id="cluster-rename-close">&#215;</button>
-              <h2 class="settings-title" id="cluster-rename-title">Rename cluster</h2>
-              <p class="settings-hint" id="cluster-rename-hint">Give this cluster a new name.</p>
-              <form class="settings-form" id="cluster-rename-form">
-                <label for="cluster-rename-input">Name</label>
-                <input type="text" id="cluster-rename-input" name="cluster-name" />
-                <div class="settings-actions">
-                  <button type="button" class="subtab-btn" id="cluster-rename-cancel">Cancel</button>
-                  <button type="submit" class="settings-save" id="cluster-rename-save">Save</button>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <!-- Compose modal -->
-          <div class="email-detail-overlay hidden" id="compose-overlay">
-            <div class="email-detail-panel settings-panel compose-panel">
-              <button type="button" class="email-detail-close" id="compose-close">&#215;</button>
-              <h2 class="settings-title">New email</h2>
-              <form class="settings-form" id="compose-form">
-                <label for="compose-to">To</label>
-                <input type="text" id="compose-to" name="to" placeholder="recipient@example.com" required />
-                <label for="compose-subject">Subject</label>
-                <input type="text" id="compose-subject" name="subject" placeholder="Subject" />
-                <label for="compose-body">Message</label>
-                <div class="compose-editor-toolbar" role="toolbar" aria-label="Message formatting">
-                  <button type="button" class="compose-tool-btn" data-cmd="bold" title="Bold"><strong>B</strong></button>
-                  <button type="button" class="compose-tool-btn" data-cmd="italic" title="Italic"><em>I</em></button>
-                  <button type="button" class="compose-tool-btn" data-cmd="underline" title="Underline"><u>U</u></button>
-                  <span class="compose-tool-sep" aria-hidden="true"></span>
-                  <button type="button" class="compose-tool-btn" data-cmd="insertUnorderedList" title="Bulleted list">• list</button>
-                  <button type="button" class="compose-tool-btn" data-cmd="insertOrderedList" title="Numbered list">1. list</button>
-                  <span class="compose-tool-sep" aria-hidden="true"></span>
-                  <button type="button" class="compose-tool-btn" id="compose-insert-link" title="Insert link">link</button>
-                  <button type="button" class="compose-tool-btn" data-cmd="unlink" title="Remove link">unlink</button>
-                </div>
-                <div id="compose-body" class="compose-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message body" data-placeholder="Write your message..."></div>
-
-                <div class="compose-attachments">
-                  <div class="compose-attachments-row">
-                    <button type="button" class="subtab-btn" id="compose-attach-btn">Attach files</button>
-                    <button type="button" class="subtab-btn hidden" id="compose-clear-attachments">Clear</button>
-                  </div>
-                  <div class="compose-attachments-list hidden" id="compose-attachments-list" aria-label="Attachments"></div>
-                </div>
-
-                <!-- Rename attachment modal (inside compose) -->
-                <div class="compose-link-overlay hidden" id="compose-rename-overlay" role="dialog" aria-modal="true" aria-label="Rename attachment">
-                  <div class="compose-link-panel">
-                    <h3 class="compose-link-title">Rename attachment</h3>
-                    <div class="compose-link-form">
-                      <label for="compose-rename-filename">Filename</label>
-                      <input type="text" id="compose-rename-filename" placeholder="example.pdf" />
-                      <p class="compose-link-hint">This changes what the recipient sees (the original file is not renamed).</p>
-                      <div class="compose-link-actions">
-                        <button type="button" class="subtab-btn" id="compose-rename-cancel">Cancel</button>
-                        <button type="button" class="settings-save" id="compose-rename-save">Save</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Insert link modal (inside compose) -->
-                <div class="compose-link-overlay hidden" id="compose-link-overlay" role="dialog" aria-modal="true" aria-label="Insert link">
-                  <div class="compose-link-panel">
-                    <h3 class="compose-link-title">Insert link</h3>
-                    <div class="compose-link-form">
-                      <label for="compose-link-text">Text</label>
-                      <input type="text" id="compose-link-text" placeholder="What the link should say" />
-                      <label for="compose-link-url">Link address</label>
-                      <input type="text" id="compose-link-url" placeholder="https://example.com" />
-                      <p class="compose-link-hint">Tip: you can paste an email address too.</p>
-                      <div class="compose-link-actions">
-                        <button type="button" class="subtab-btn" id="compose-link-cancel">Cancel</button>
-                        <button type="button" class="settings-save" id="compose-link-insert">Insert</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p class="compose-status" id="compose-status"></p>
-                <div class="settings-actions">
-                  <button type="button" class="subtab-btn" id="compose-cancel">Cancel</button>
-                  <button type="submit" class="settings-save" id="compose-send">Send</button>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <!-- Email detail modal (used for Graph / Thread click) -->
-          <div class="email-detail-overlay hidden" id="email-detail">
-            <div class="email-detail-panel">
-              <button type="button" class="email-detail-close" id="email-detail-close">&#215;</button>
-              <div class="email-detail-header">
-                <h2 class="email-detail-subject" id="email-detail-subject"></h2>
-                <div class="email-detail-meta-block">
-                  <div class="email-detail-meta-row"><span class="email-detail-meta-label">From</span><span id="email-detail-from"></span></div>
-                  <div class="email-detail-meta-row"><span class="email-detail-meta-label">To</span><span id="email-detail-to"></span></div>
-                  <div class="email-detail-meta-row"><span class="email-detail-meta-label">Date</span><span id="email-detail-date"></span></div>
-                </div>
-              </div>
-              <div class="email-detail-body" id="email-detail-body"></div>
-            </div>
-          </div>
-        </main>
+          <button type="button" class="modal-close" data-action="close-threshold-overlay" aria-label="Close prompt cluster review">&times;</button>
+        </div>
+        <div class="cluster-results-list" id="cluster-threshold-results"></div>
+        <div class="cluster-threshold-row">
+          <label for="cluster-threshold-slider">Threshold</label>
+          <input type="range" id="cluster-threshold-slider" min="0" max="1" step="0.05" value="0.3" />
+          <span class="cluster-threshold-value" id="cluster-threshold-value">0.30</span>
+        </div>
+        <p class="modal-copy modal-copy-tight" id="cluster-threshold-count">0 emails in cluster</p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" data-action="close-threshold-overlay">Cancel</button>
+          <button type="button" class="primary-btn" id="cluster-threshold-create">Create cluster</button>
+        </div>
       </div>
     </div>
 

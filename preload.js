@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fetchOne: (uid) => ipcRenderer.invoke('imap:fetchOne', uid),
     fetchBodies: (uids) => ipcRenderer.invoke('imap:fetchBodies', uids),
     fetchThreadHeaders: (uids) => ipcRenderer.invoke('imap:fetchThreadHeaders', uids),
+    delete: (payload) => ipcRenderer.invoke('imap:delete', payload),
     test: (config) => ipcRenderer.invoke('imap:test', config)
   },
   smtp: {
