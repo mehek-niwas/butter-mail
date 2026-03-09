@@ -172,7 +172,7 @@ let pcaPoints = getPcaPoints();
 let searchQuery = '';
 let searchResults = null;
 let selectedEmail = null;
-let threadViewInList = false;
+let threadViewInList = true;
 const expandedThreads = new Set();
 let isFetchingFromImap = false;
 let isFetchingMore = false;
@@ -1607,6 +1607,7 @@ document.querySelectorAll('.view-tab').forEach((btn) => {
 // --- List thread view checkbox ---
 const threadCheckbox = document.getElementById('thread-view-checkbox');
 if (threadCheckbox) {
+  threadCheckbox.checked = threadViewInList;
   threadCheckbox.addEventListener('change', () => {
     threadViewInList = threadCheckbox.checked;
     if (!threadViewInList) {
