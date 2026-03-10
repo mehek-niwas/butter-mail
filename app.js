@@ -1121,7 +1121,7 @@ function scheduleSearch(tab) {
       results = await window.HybridSearch.search(query, getAllEmails(), getEmbeddings(), window.electronAPI);
     } else {
       const lower = query.toLowerCase();
-      results = getAllEmails().filter((email) => String(email.subject || '').toLowerCase().includes(lower) || String(email.body || '').toLowerCase().includes(lower) || String(email.from || '').toLowerCase().includes(lower));
+      results = getAllEmails().filter((email) => String(email.subject || '').toLowerCase().includes(lower) || String(email.body || '').toLowerCase().includes(lower) || String(email.from || '').toLowerCase().includes(lower) || String(email.fromEmail || '').toLowerCase().includes(lower));
     }
     tab.searchResults = results;
     tab.searchLoading = false;

@@ -24,11 +24,16 @@ function ensureBM25Index(emails) {
   if (bm25Engine && lastEmailIds === ids) return;
   lastEmailIds = ids;
   bm25Engine = bm25();
-  bm25Engine.defineConfig({ fldWeights: { title: 2, body: 1 } });
+  bm25Engine.defineConfig({ fldWeights: { title: 2, sender: 1.5, senderEmail: 1.5, body: 1 } });
   bm25Engine.definePrepTasks([tokenize]);
   emails.forEach((e, i) => {
     bm25Engine.addDoc(
-      { title: e.subject || '', body: (e.body || '').slice(0, 5000) },
+      {
+        title: e.subject || '',
+        sender: e.from || '',
+        senderEmail: e.fromEmail || '',
+        body: (e.body || '').slice(0, 5000)
+      },
       i
     );
   });
@@ -198,7 +203,9 @@ async function hybridSearch(query, emails, embeddings) {
     const filtered = emails.filter(
       (e) =>
         (e.subject && e.subject.toLowerCase().includes(q)) ||
-        (e.body && e.body.toLowerCase().includes(q))
+        (e.body && e.body.toLowerCase().includes(q)) ||
+        (e.from && e.from.toLowerCase().includes(q)) ||
+        (e.fromEmail && e.fromEmail.toLowerCase().includes(q))
     );
     let fallbackResults = filtered.map((e, i) => attachSearchScores(e, i + 1, null, null, null));
     fallbackResults = await fillDenseAndSparseForResults(fallbackResults, query, emails, embeddings, {}, null);

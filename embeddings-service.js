@@ -24,14 +24,22 @@ function stripHtml(html) {
     .trim();
 }
 
-/** Extract text for embedding: subject + body (no images) */
+/** Extract text for embedding: subject + sender + body (no images) */
 function getTextForEmbedding(email) {
   const subject = (email.subject || '').replace(/\s+/g, ' ').trim();
+  const sender = [email.from || '', email.fromEmail || '']
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   let body = email.body || '';
   if (email.bodyIsHtml && body) {
     body = stripHtml(body);
   }
-  const text = (subject + ' ' + body).trim().slice(0, 512 * 4); // ~512 tokens
+  const text = [subject, sender, body]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .slice(0, 512 * 4); // ~512 tokens
   return text || '(no content)';
 }
 

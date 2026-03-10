@@ -14,7 +14,9 @@
     return emails.filter(
       (e) =>
         (e.subject && e.subject.toLowerCase().includes(q)) ||
-        (e.body && e.body.toLowerCase().includes(q))
+        (e.body && e.body.toLowerCase().includes(q)) ||
+        (e.from && e.from.toLowerCase().includes(q)) ||
+        (e.fromEmail && e.fromEmail.toLowerCase().includes(q))
     );
   }
 
