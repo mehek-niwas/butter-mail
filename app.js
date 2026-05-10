@@ -42,16 +42,23 @@ const dom = {
   thresholdValue: document.getElementById('cluster-threshold-value'),
   thresholdCount: document.getElementById('cluster-threshold-count'),
   thresholdCreate: document.getElementById('cluster-threshold-create'),
-  themeToggle: document.getElementById('theme-toggle-btn')
+  statusLine: document.getElementById('status-line'),
+  statusMsgs: document.getElementById('status-msgs'),
+  statusSync: document.getElementById('status-sync'),
+  statusHost: document.getElementById('status-host'),
+  statusClock: document.getElementById('status-clock'),
+  globalStatusLine: document.getElementById('global-status-line'),
+  titlebarSession: document.getElementById('titlebar-session')
 };
 
+let imapHostLabel = '';
+
 const mailboxShortcuts = [
-  { id: 'home', label: 'Home', icon: 'H' },
-  { id: 'all-mail-page', label: 'All', icon: 'A' },
-  { id: 'mailbox:INBOX', label: 'Inbox', icon: 'I' },
-  { id: 'mailbox:Sent', label: 'Sent', icon: 'S' },
-  { id: 'mailbox:Drafts', label: 'Drafts', icon: 'D' },
-  { id: 'mailbox:Trash', label: 'Trash', icon: 'T' }
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'mailbox:INBOX', label: 'Inbox', icon: 'inbox' },
+  { id: 'mailbox:Sent', label: 'Sent', icon: 'send' },
+  { id: 'mailbox:Drafts', label: 'Drafts', icon: 'file' },
+  { id: 'mailbox:Trash', label: 'Trash', icon: 'trash' }
 ];
 
 let uniqueId = 0;
@@ -81,10 +88,10 @@ let emailCollectionRevision = 0;
 let bookmarkRevision = 0;
 
 const appState = {
-  theme: localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark',
+  theme: 'dark',
   tabs: [createHomeTab()],
   activeTabId: HOME_TAB_ID,
-  status: '',
+  status: 'ready.',
   statusTone: 'muted'
 };
 
@@ -192,7 +199,7 @@ async function setCachedEmails(accountKey, emails) {
 }
 
 function createHomeTab() {
-  return { id: HOME_TAB_ID, type: 'home', title: 'Home', iconLabel: 'H', closable: false, query: '', searchResults: null, searchLoading: false };
+  return { id: HOME_TAB_ID, type: 'home', title: 'Home', iconName: 'home', closable: false, query: '', searchResults: null, searchLoading: false };
 }
 
 function createClusterTab(options) {
@@ -203,7 +210,7 @@ function createClusterTab(options) {
     bookmarkId: options.bookmarkId || '',
     systemId: options.systemId || '',
     title: options.title,
-    iconLabel: options.iconLabel || initialsFromText(options.title),
+    iconName: options.iconName || 'bookmark',
     closable: true,
     viewMode: 'list',
     query: '',
@@ -221,7 +228,7 @@ function createEmailTab(emailId) {
     type: 'emailThread',
     emailId,
     title: truncate(email && email.subject ? email.subject : '(no subject)', 34),
-    iconLabel: initialsFromText(email && (email.fromEmail || email.from || email.subject) ? (email.fromEmail || email.from || email.subject) : 'E'),
+    iconName: 'mail-open',
     closable: true,
     expandedMessageIds: { [emailId]: true }
   };
@@ -232,7 +239,7 @@ function createComposeTab(seed) {
     id: makeId('tab-compose'),
     type: 'compose',
     title: 'New Email',
-    iconLabel: 'P',
+    iconName: 'compose',
     closable: true,
     to: seed && seed.to ? seed.to : '',
     subject: seed && seed.subject ? seed.subject : '',
@@ -302,26 +309,45 @@ function sanitizeComposeHtml(html) {
   return typeof DOMPurify === 'undefined' ? html : DOMPurify.sanitize(html, SANITIZE_OPTS);
 }
 
-function initialsFromText(value) {
-  const parts = String(value || '').trim().replace(/<[^>]+>/g, '').split(/[\s@._-]+/).filter(Boolean);
-  if (!parts.length) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-  return (parts[0].slice(0, 1) + parts[1].slice(0, 1)).toUpperCase();
+const ICON_GLYPHS = {
+  home: '~',
+  inbox: '@',
+  send: '>',
+  file: '#',
+  trash: 'x',
+  bookmark: '*',
+  sparkles: '+',
+  mail: '@',
+  'mail-open': '@',
+  compose: '!',
+  settings: '%',
+  plus: '+',
+  close: 'x',
+  search: '/',
+  refresh: '^',
+  cluster: '#',
+  reply: '<',
+  forward: '>',
+  chart: '#',
+  list: '=',
+  attach: '&'
+};
+
+function iconMarkup(name, className) {
+  const glyph = ICON_GLYPHS[name] || ICON_GLYPHS.mail;
+  const classes = className ? escapeHtml(className) : 'glyph';
+  return '<span class="' + classes + ' glyph" aria-hidden="true">' + glyph + '</span>';
 }
 
-function hashString(value) {
-  let hash = 0;
-  const text = String(value || '');
-  for (let index = 0; index < text.length; index += 1) {
-    hash = ((hash << 5) - hash) + text.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function iconMarkup(seed, label) {
-  const variant = (hashString(seed || label) % 5) + 1;
-  return '<span class="icon-chip variant-' + variant + '">' + escapeHtml(label) + '</span>';
+function iconLabelMarkup(iconName, label, options) {
+  const opts = options || {};
+  const wrapperClass = opts.wrapperClass || 'icon-label';
+  const iconClass = opts.iconClass || 'glyph';
+  const labelClass = opts.labelClass || '';
+  return '<span class="' + escapeHtml(wrapperClass) + '">' +
+    iconMarkup(iconName, iconClass) +
+    (label ? '<span' + (labelClass ? ' class="' + escapeHtml(labelClass) + '"' : '') + '>' + escapeHtml(label) + '</span>' : '') +
+  '</span>';
 }
 
 function getAllEmails() {
@@ -347,6 +373,34 @@ function setStatus(message, tone) {
   if (status) {
     status.textContent = appState.status;
     status.className = 'status-copy ' + appState.statusTone;
+  }
+  if (dom.globalStatusLine) {
+    dom.globalStatusLine.textContent = appState.status || 'ready.';
+    dom.globalStatusLine.className = 'status-seg status-tone-' + (appState.statusTone || 'muted');
+  }
+}
+
+setInterval(() => updateStatusLine(), 30000);
+
+function pad2(n) { return n < 10 ? '0' + n : String(n); }
+
+function updateStatusLine() {
+  if (!dom.statusLine) return;
+  const inboxCount = getAllEmails().filter((email) => normalizeMailbox(email) === 'inbox').length;
+  if (dom.statusMsgs) dom.statusMsgs.textContent = String(inboxCount) + ' msgs';
+  if (dom.statusSync) {
+    let sync = 'idle';
+    if (isFetchingFromImap) sync = 'sync…';
+    else if (isFetchingMore) sync = 'load…';
+    dom.statusSync.textContent = sync;
+  }
+  if (dom.statusHost) dom.statusHost.textContent = 'imap: ' + (imapHostLabel || '—');
+  if (dom.statusClock) {
+    const now = new Date();
+    dom.statusClock.textContent = pad2(now.getHours()) + ':' + pad2(now.getMinutes());
+  }
+  if (dom.titlebarSession) {
+    dom.titlebarSession.textContent = imapHostLabel || 'local';
   }
 }
 
@@ -417,11 +471,11 @@ function closeTab(tabId) {
 
 function openHomeTab() { appState.activeTabId = HOME_TAB_ID; renderApp(); }
 
-function openSystemTab(systemId, label, icon) {
-  return addTab(createClusterTab({ sourceType: 'system', systemId, title: label, iconLabel: icon || initialsFromText(label) }), 'system:' + systemId);
+function openSystemTab(systemId, label, iconName) {
+  return addTab(createClusterTab({ sourceType: 'system', systemId, title: label, iconName: iconName || 'inbox' }), 'system:' + systemId);
 }
 
-function openAllMailTab() { return openSystemTab('all-mail', 'All', 'A'); }
+function openInboxTab() { return openSystemTab('mailbox:INBOX', 'Inbox', 'inbox'); }
 
 function openEmailTab(emailId) {
   const email = getEmailById(emailId);
@@ -439,11 +493,10 @@ function openComposeTab(seed) {
 function renderApp(options) {
   const next = options || {};
   cleanupOverrides();
-  dom.body.setAttribute('data-theme', appState.theme);
-  if (dom.themeToggle) dom.themeToggle.textContent = appState.theme === 'dark' ? 'Light' : 'Dark';
   if (next.tabs !== false) renderTabStrip();
   if (next.bookmarks !== false) renderBookmarkBar();
   if (next.view !== false) renderActiveView();
+  updateStatusLine();
 }
 
 function sortedPromptClusters() {
@@ -543,7 +596,7 @@ function openBookmarkTab(bookmarkId) {
     sourceType: 'bookmark',
     bookmarkId,
     title: bookmark.label,
-    iconLabel: initialsFromText(bookmark.label)
+    iconName: bookmark.kind === 'auto' ? 'sparkles' : 'bookmark'
   }), 'bookmark:' + bookmarkId);
 }
 
@@ -576,10 +629,10 @@ function normalizeMailbox(email) {
 }
 
 function getEmailsForSystemTab(tab) {
-  const key = tab.systemId || 'all-mail';
+  const key = tab.systemId || 'mailbox:INBOX';
   if (systemEmailCache[key]) return systemEmailCache[key];
   const emails = getAllEmails();
-  let filtered = emails;
+  let filtered = emails.filter((email) => normalizeMailbox(email) === 'inbox');
   if (tab.systemId === 'mailbox:INBOX') filtered = emails.filter((email) => normalizeMailbox(email) === 'inbox');
   else if (tab.systemId === 'mailbox:Sent') filtered = emails.filter((email) => normalizeMailbox(email) === 'sent');
   else if (tab.systemId === 'mailbox:Drafts') filtered = emails.filter((email) => normalizeMailbox(email) === 'drafts');
@@ -629,12 +682,14 @@ function getEmailsForTab(tab) {
 }
 
 function renderTabStrip() {
-  dom.tabStrip.innerHTML = appState.tabs.map((tab) => {
+  dom.tabStrip.innerHTML = appState.tabs.map((tab, index) => {
     const active = tab.id === appState.activeTabId ? ' active' : '';
+    const num = String(index + 1);
     return '<div class="browser-tab' + active + '" data-action="activate-tab" data-tab-id="' + escapeHtml(tab.id) + '" role="button" tabindex="0">' +
-      '<span class="tab-favicon">' + iconMarkup(tab.title || tab.iconLabel, tab.iconLabel || initialsFromText(tab.title || 'T')) + '</span>' +
-      '<span class="browser-tab-title">' + escapeHtml(tab.title) + '</span>' +
-      (tab.closable ? '<button type="button" class="tab-close" data-action="close-tab" data-tab-id="' + escapeHtml(tab.id) + '" aria-label="Close tab">×</button>' : '') +
+      '<span class="tab-num">' + num + '</span>' +
+      '<span class="tab-glyph">' + (ICON_GLYPHS[tab.iconName] || '@') + '</span>' +
+      '<span class="browser-tab-title">' + escapeHtml(tab.title.toLowerCase()) + '</span>' +
+      (tab.closable ? '<button type="button" class="tab-close" data-action="close-tab" data-tab-id="' + escapeHtml(tab.id) + '" aria-label="Close tab">x</button>' : '') +
     '</div>';
   }).join('');
 }
@@ -646,16 +701,20 @@ function renderBookmarkBar() {
     const tooltip = (bookmark.kind === 'auto' ? 'Auto-created cluster' : 'User-created cluster') + (bookmark.description ? '\n' + bookmark.description : '');
     const activeClass = bookmark.id === currentBookmarkId ? ' active' : '';
     return '<button type="button" class="bookmark-pill' + activeClass + '" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '" data-tooltip="' + escapeHtml(tooltip) + '">' +
-      '<span class="bookmark-favicon">' + iconMarkup(bookmark.label, initialsFromText(bookmark.label)) + '</span>' +
-      '<span>' + escapeHtml(bookmark.label) + '</span>' +
+      '<span class="glyph">' + (bookmark.kind === 'auto' ? '+' : '*') + '</span>' +
+      '<span>' + escapeHtml(bookmark.label.toLowerCase()) + '</span>' +
+      '<span class="bookmark-count" style="color:var(--fg-mute);font-size:11px;">(' + String(bookmark.count) + ')</span>' +
     '</button>';
   }).join('');
 }
 
 function renderBookmarkCard(bookmark) {
-  return '<button type="button" class="bookmark-card" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '" data-tooltip="' + escapeHtml((bookmark.kind === 'auto' ? 'Auto-created cluster' : 'User-created cluster') + (bookmark.description ? '\n' + bookmark.description : '')) + '">' +
-    '<div class="bookmark-card-header">' + iconMarkup(bookmark.label, initialsFromText(bookmark.label)) + '<span class="bookmark-card-count">' + String(bookmark.count) + ' email(s)</span></div>' +
-    '<div><h3 class="bookmark-card-name">' + escapeHtml(bookmark.label) + '</h3><p class="bookmark-card-description">' + escapeHtml(bookmark.description || (bookmark.kind === 'auto' ? 'Auto-created from clustering.' : 'User-created bookmark cluster.')) + '</p></div>' +
+  return '<button type="button" class="bookmark-card" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '" data-tooltip="' + escapeHtml((bookmark.kind === 'auto' ? 'auto-created cluster' : 'user-created cluster') + (bookmark.description ? '\n' + bookmark.description : '')) + '">' +
+    '<div class="bookmark-card-header">' +
+      '<h3 class="bookmark-card-name">' + (bookmark.kind === 'auto' ? '+ ' : '* ') + escapeHtml(bookmark.label.toLowerCase()) + '</h3>' +
+      '<span class="bookmark-card-count">' + String(bookmark.count) + '</span>' +
+    '</div>' +
+    '<p class="bookmark-card-description">' + escapeHtml(bookmark.description || (bookmark.kind === 'auto' ? 'auto-created from clustering.' : 'user-created cluster.')) + '</p>' +
   '</button>';
 }
 
@@ -685,35 +744,92 @@ function renderActiveView() {
 function renderHomeView(tab) {
   const bookmarks = getBookmarkDefinitions();
   const searchResults = tab.query && Array.isArray(tab.searchResults) ? tab.searchResults.slice(0, 8) : [];
-  const allEmails = sortEmails(getAllEmails(), false).slice(0, 12);
+  const totalEmails = getAllEmails().length;
+  const embeddingCount = Object.keys(getEmbeddings() || {}).length;
+  const inboxCount = getAllEmails().filter((email) => normalizeMailbox(email) === 'inbox').length;
+  const sentCount = getAllEmails().filter((email) => normalizeMailbox(email) === 'sent').length;
+
+  const session = imapHostLabel || 'local';
+  const motd =
+    '  butter-mail v0.1\n' +
+    '  session: ' + session + '\n' +
+    '  ' + String(totalEmails) + ' cached · ' + String(inboxCount) + ' inbox · ' + String(sentCount) + ' sent · ' +
+    String(bookmarks.length) + ' clusters · ' + String(embeddingCount) + ' embeddings';
+
+  const cmd = (action, attrs, name, desc) =>
+    '<button type="button" class="home-cmd" data-action="' + action + '"' + (attrs || '') + '>' +
+      '<span class="home-cmd-name">' + escapeHtml(name) + '</span>' +
+      '<span class="home-cmd-desc">' + escapeHtml(desc) + '</span>' +
+    '</button>';
+
+  const commands =
+    cmd('open-compose-tab', '', 'compose', 'open a new compose buffer') +
+    cmd('open-mailbox-tab', ' data-system-id="mailbox:INBOX" data-label="Inbox" data-icon="inbox"', 'inbox', 'open inbox (' + String(inboxCount) + ')') +
+    cmd('open-mailbox-tab', ' data-system-id="mailbox:Sent" data-label="Sent" data-icon="send"', 'sent', 'view sent mail') +
+    cmd('open-mailbox-tab', ' data-system-id="mailbox:Drafts" data-label="Drafts" data-icon="file"', 'drafts', 'view drafts') +
+    cmd('open-mailbox-tab', ' data-system-id="mailbox:Trash" data-label="Trash" data-icon="trash"', 'trash', 'view trash') +
+    cmd('refresh-imap', '', 'refresh', 'pull latest from imap') +
+    cmd('compute-embeddings', '', 'embed', 'compute embeddings for all cached mail') +
+    cmd('recluster', '', 'recluster', 're-run clustering on existing embeddings') +
+    cmd('focus-smart-cluster', '', 'smart', 'create a smart cluster from a prompt') +
+    cmd('open-settings', '', 'settings', 'configure imap host / credentials');
+
+  const clusterLine = bookmarks.length
+    ? '<div class="home-cluster-line">' +
+      bookmarks.slice(0, 24).map((bookmark) =>
+        '<button type="button" class="home-cluster-chip" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '">' +
+          (bookmark.kind === 'auto' ? '+ ' : '* ') +
+          escapeHtml(bookmark.label.toLowerCase()) +
+          ' <span class="home-cluster-count">(' + String(bookmark.count) + ')</span>' +
+        '</button>'
+      ).join('') +
+      '<button type="button" class="home-cluster-chip home-cluster-add" data-action="open-cluster-editor">+ new</button>' +
+    '</div>'
+    : '<p class="home-dim">no clusters yet — type a prompt below to create one.</p>';
+
+  const searchBlock = tab.query
+    ? '<section class="home-section">' +
+        '<div class="home-section-label">search ' + escapeHtml(tab.query) + ' →</div>' +
+        (tab.searchLoading
+          ? '<p class="home-dim">searching…</p>'
+          : (searchResults.length
+              ? renderSearchPreviewList(searchResults)
+              : '<p class="home-dim">no matches.</p>'))
+      + '</section>'
+    : '';
+
   return '<section class="tab-view home-view">' +
-    '<div class="home-hero">' +
-      '<div class="hero-logo-row"><img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="hero-logo" /><img src="assets/bread-butter.webp" alt="" class="hero-logo hero-logo-secondary" aria-hidden="true" /></div>' +
-      '<h1 class="hero-title">Welcome to your spread</h1>' +
-      '<p class="hero-copy">Browse everything at once, or move through clusters and threads without the usual inbox overload.</p>' +
-      '<div class="hero-tagline">the better mail, with your spread front and center</div>' +
+    '<div class="home-shell">' +
+      '<pre class="home-motd">' + escapeHtml(motd) + '</pre>' +
+
+      '<div class="home-prompt">' +
+        '<span class="home-prompt-glyph">/</span>' +
+        '<input type="text" class="home-prompt-input" data-role="tab-query" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="search your spread…" value="' + escapeHtml(tab.query || '') + '" autofocus />' +
+      '</div>' +
+
+      searchBlock +
+
+      '<section class="home-section">' +
+        '<div class="home-section-label">commands</div>' +
+        '<div class="home-cmd-grid">' + commands + '</div>' +
+      '</section>' +
+
+      '<section class="home-section">' +
+        '<div class="home-section-label">clusters</div>' +
+        clusterLine +
+      '</section>' +
+
+      '<section class="home-section">' +
+        '<div class="home-section-label">smart cluster</div>' +
+        '<form class="home-prompt-form" id="prompt-cluster-form">' +
+          '<span class="home-prompt-glyph">&gt;</span>' +
+          '<input type="text" id="prompt-cluster-input" placeholder="e.g. invoices, job hunt, design reviews" />' +
+          '<button type="submit" class="home-cmd-go">create</button>' +
+        '</form>' +
+      '</section>' +
+
+      '<p class="home-status status-copy ' + escapeHtml(appState.statusTone) + '" id="global-status">' + escapeHtml(appState.status || 'ready.') + '</p>' +
     '</div>' +
-    '<div class="home-search-row">' +
-      '<button type="button" class="primary-btn" data-action="open-compose-tab">Compose</button>' +
-      '<div class="home-search-shell"><span class="meta-pill">Search</span><input type="text" class="search-field" data-role="tab-query" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="Search across your spread" value="' + escapeHtml(tab.query || '') + '" /></div>' +
-      '<button type="button" class="secondary-btn" data-action="open-all-mail-tab">All</button>' +
-    '</div>' +
-    '<div class="home-shortcuts">' +
-      mailboxShortcuts.map((shortcut) => {
-        if (shortcut.id === 'home') return '<button type="button" class="home-shortcut" data-action="go-home">' + iconMarkup(shortcut.label, shortcut.icon) + '<span>' + escapeHtml(shortcut.label) + '</span></button>';
-        if (shortcut.id === 'all-mail-page') return '<button type="button" class="home-shortcut" data-action="open-all-mail-tab">' + iconMarkup(shortcut.label, shortcut.icon) + '<span>' + escapeHtml(shortcut.label) + '</span></button>';
-        return '<button type="button" class="home-shortcut" data-action="open-mailbox-tab" data-system-id="' + escapeHtml(shortcut.id) + '" data-label="' + escapeHtml(shortcut.label) + '" data-icon="' + escapeHtml(shortcut.icon) + '">' + iconMarkup(shortcut.label, shortcut.icon) + '<span>' + escapeHtml(shortcut.label) + '</span></button>';
-      }).join('') +
-    '</div>' +
-    (tab.query ? '<section class="surface-card"><h2 class="surface-title">Search results</h2><p class="surface-copy">' + (tab.searchLoading ? 'Searching your spread…' : String(searchResults.length) + ' result(s)') + '</p>' + renderSearchPreviewList(searchResults) + '</section>' : '') +
-    '<div class="home-grid">' +
-      '<section class="surface-card"><h2 class="surface-title">Bookmarks</h2><p class="surface-copy">' + String(bookmarks.length) + ' cluster(s) available.</p><div class="bookmark-grid">' + bookmarks.map(renderBookmarkCard).join('') + '</div></section>' +
-      '<aside class="automation-stack">' +
-        '<section class="surface-card"><h2 class="surface-title">Short actions</h2><p class="surface-copy">Keep the main flow calm. Use the secondary panel for heavier actions.</p><div class="toolbar-row"><button type="button" class="quick-action" data-action="refresh-imap">Refresh</button><button type="button" class="quick-action" data-action="compute-embeddings">Compute embeddings</button><button type="button" class="quick-action" data-action="recluster">Re-cluster</button></div><p class="status-copy ' + escapeHtml(appState.statusTone) + '" id="global-status">' + escapeHtml(appState.status || '') + '</p></section>' +
-        '<section class="surface-card"><h2 class="surface-title">Create a smart cluster</h2><p class="surface-copy">Turn a short concept into a bookmark backed by semantic similarity.</p><form class="prompt-cluster-form" id="prompt-cluster-form"><input type="text" class="compose-field" id="prompt-cluster-input" placeholder="e.g. invoices, job hunt, design reviews" /><button type="submit" class="primary-btn">Create</button></form></section>' +
-      '</aside>' +
-    '</div>' +
-    '<section class="surface-card all-mail-surface"><div class="all-mail-header"><div><h2 class="surface-title">All emails</h2><p class="surface-copy">A clean recent view from every mailbox, directly inside the Home tab.</p></div><button type="button" class="secondary-btn" data-action="open-all-mail-tab">Open All tab</button></div>' + renderClusterRows({ id: HOME_TAB_ID, selectedIds: [], type: 'home' }, allEmails, { selectable: false }) + '</section>' +
   '</section>';
 }
 
@@ -725,17 +841,17 @@ function renderBookmarkOptions(includeBase) {
 }
 
 function renderBatchToolbar(tab) {
-  return '<div class="cluster-batch-toolbar"><span class="toolbar-note">' + String(tab.selectedIds.length) + ' selected</span><select data-role="batch-move" data-tab-id="' + escapeHtml(tab.id) + '">' + renderBookmarkOptions(true) + '</select><button type="button" class="secondary-btn" data-action="clear-selection" data-tab-id="' + escapeHtml(tab.id) + '">Clear</button></div>';
+  return '<div class="cluster-batch-toolbar"><span>› ' + String(tab.selectedIds.length) + ' selected</span><select data-role="batch-move" data-tab-id="' + escapeHtml(tab.id) + '">' + renderBookmarkOptions(true) + '</select><button type="button" class="secondary-btn" data-action="clear-selection" data-tab-id="' + escapeHtml(tab.id) + '">clear</button></div>';
 }
 
 function renderGraphShell(emails) {
-  if (!Object.keys(getEmbeddings()).length || !Object.keys(pcaPoints || {}).length) return '<div class="state-block">Compute embeddings first to use graph mode.</div>';
-  if (!emails.length) return '<div class="state-block">Nothing to graph in this tab.</div>';
-  return '<div class="graph-shell"><div class="graph-container" id="graph-container"><canvas id="graph-canvas"></canvas><div class="graph-axis-legend"><span class="graph-axis-label graph-axis-x">X</span><span class="graph-axis-label graph-axis-y">Y</span><span class="graph-axis-label graph-axis-z">Z</span></div><div class="graph-coords-legend" id="graph-coords">X: — Y: — Z: —</div><div class="graph-tooltip hidden" id="graph-tooltip"></div></div></div>';
+  if (!Object.keys(getEmbeddings()).length || !Object.keys(pcaPoints || {}).length) return '<div class="state-block">compute embeddings first to use graph mode.</div>';
+  if (!emails.length) return '<div class="state-block">nothing to graph in this tab.</div>';
+  return '<div class="graph-shell"><div class="graph-container" id="graph-container"><canvas id="graph-canvas"></canvas><div class="graph-axis-legend"><span>x</span><span>y</span><span>z</span></div><div class="graph-coords-legend" id="graph-coords">x: — y: — z: —</div><div class="graph-tooltip hidden" id="graph-tooltip"></div></div></div>';
 }
 
 function renderClusterRows(tab, emails, options) {
-  if (!emails.length) return '<div class="state-block">No emails here yet.</div>';
+  if (!emails.length) return '<div class="state-block">no emails here yet.</div>';
   ensureThreadCacheBuilt();
   const selectable = !options || options.selectable !== false;
   const renderedCount = getRenderedEmailCount(tab, emails.length);
@@ -744,17 +860,16 @@ function renderClusterRows(tab, emails, options) {
   return '<div class="cluster-list-body"' + (tab.type === 'clusterList' ? ' data-tab-id="' + escapeHtml(tab.id) + '"' : '') + '>' + visibleEmails.map((email) => {
     const selected = tab.selectedIds.includes(email.id) ? ' checked' : '';
     const threadSize = threadSizesByEmailId[email.id] || 1;
-    const sender = email.from || email.fromEmail || '(unknown sender)';
+    const sender = email.from || email.fromEmail || '(unknown)';
     const mailbox = normalizeMailbox(email);
     return '<div class="cluster-row" data-email-id="' + escapeHtml(email.id) + '">' +
-      (selectable ? '<input class="cluster-row-checkbox" type="checkbox" data-role="row-select" data-tab-id="' + escapeHtml(tab.id) + '" data-email-id="' + escapeHtml(email.id) + '"' + selected + ' />' : '') +
+      (selectable ? '<input class="cluster-row-checkbox" type="checkbox" data-role="row-select" data-tab-id="' + escapeHtml(tab.id) + '" data-email-id="' + escapeHtml(email.id) + '"' + selected + ' />' : '<span></span>') +
       '<div class="row-main" data-action="open-email-tab" data-email-id="' + escapeHtml(email.id) + '">' +
         '<div class="row-meta-line">' +
-          '<span class="cluster-row-leading">' + iconMarkup(email.fromEmail || sender || email.subject || 'E', initialsFromText(email.fromEmail || sender || 'E')) + '</span>' +
-          '<span class="row-sender">' + escapeHtml(sender) + '</span>' +
-          '<span class="row-separator">›</span>' +
+          '<span class="row-identity"><span class="row-sender">' + escapeHtml(sender) + '</span></span>' +
+          '<span class="row-separator">·</span>' +
           '<span class="row-mailbox">' + escapeHtml(mailbox || 'mail') + '</span>' +
-          (threadSize > 1 ? '<span class="thread-indicator">thread · ' + String(threadSize) + '</span>' : '') +
+          (threadSize > 1 ? '<span class="thread-indicator">' + String(threadSize) + '</span>' : '<span></span>') +
           '<span class="row-date">' + escapeHtml(formatDate(email.date)) + '</span>' +
         '</div>' +
         '<div class="row-copy">' +
@@ -762,48 +877,111 @@ function renderClusterRows(tab, emails, options) {
           '<div class="row-preview">' + escapeHtml(getEmailPreview(email)) + '</div>' +
         '</div>' +
       '</div>' +
-      (selectable ? '<div class="cluster-row-actions"><select class="cluster-row-move" data-role="row-move" data-email-id="' + escapeHtml(email.id) + '">' + renderBookmarkOptions(true) + '</select><button type="button" class="cluster-row-open" data-action="open-email-tab" data-email-id="' + escapeHtml(email.id) + '">Open</button></div>' : '<div class="cluster-row-actions cluster-row-actions-static"><button type="button" class="cluster-row-open" data-action="open-email-tab" data-email-id="' + escapeHtml(email.id) + '">Open</button></div>') +
+      (selectable
+        ? '<div class="cluster-row-actions"><select class="cluster-row-move" data-role="row-move" data-email-id="' + escapeHtml(email.id) + '">' + renderBookmarkOptions(true) + '</select><button type="button" class="cluster-row-open" data-action="open-email-tab" data-email-id="' + escapeHtml(email.id) + '">open</button></div>'
+        : '<div class="cluster-row-actions cluster-row-actions-static"><button type="button" class="cluster-row-open" data-action="open-email-tab" data-email-id="' + escapeHtml(email.id) + '">open</button></div>') +
     '</div>';
-  }).join('') + (remainingCount ? '<button type="button" class="cluster-list-more" data-action="expand-cluster-list" data-tab-id="' + escapeHtml(tab.id) + '">Show ' + String(Math.min(LIST_ROW_STEP, remainingCount)) + ' more emails (' + String(remainingCount) + ' remaining)</button>' : '') + '</div>';
+  }).join('') + (remainingCount ? '<button type="button" class="cluster-list-more" data-action="expand-cluster-list" data-tab-id="' + escapeHtml(tab.id) + '">show ' + String(Math.min(LIST_ROW_STEP, remainingCount)) + ' more (' + String(remainingCount) + ' remaining)</button>' : '') + '</div>';
 }
 
 function renderClusterListView(tab) {
   const emails = getEmailsForTab(tab);
   const bookmark = tab.sourceType === 'bookmark' ? getBookmarkById(tab.bookmarkId) : null;
   const title = bookmark ? bookmark.label : tab.title;
-  const subtitle = bookmark ? ((bookmark.description || (bookmark.kind === 'auto' ? 'Auto-created cluster.' : 'User cluster.')) + ' ' + String(emails.length) + ' email(s).') : (tab.systemId === 'all-mail' ? 'Every email in one search-style list view.' : String(emails.length) + ' email(s).');
-  const canLoadMore = window.electronAPI && (tab.systemId === 'all-mail' || tab.systemId === 'mailbox:INBOX');
+  const subtitle = bookmark ? ((bookmark.description || (bookmark.kind === 'auto' ? 'auto-cluster.' : 'user cluster.')) + ' ' + String(emails.length) + ' msg(s).') : String(emails.length) + ' msg(s).';
+  const canLoadMore = window.electronAPI && tab.systemId === 'mailbox:INBOX';
   const renderedCount = tab.viewMode === 'graph' ? emails.length : getRenderedEmailCount(tab, emails.length);
   return '<section class="tab-view cluster-view">' +
-    '<div class="view-header"><div><h1 class="view-title">' + escapeHtml(title) + '</h1><p class="view-subtitle">' + escapeHtml(subtitle) + '</p></div><div class="segmented"><button type="button" class="segmented-btn' + (tab.viewMode === 'list' ? ' active' : '') + '" data-action="set-cluster-view" data-tab-id="' + escapeHtml(tab.id) + '" data-view-mode="list">List</button><button type="button" class="segmented-btn' + (tab.viewMode === 'graph' ? ' active' : '') + '" data-action="set-cluster-view" data-tab-id="' + escapeHtml(tab.id) + '" data-view-mode="graph">Graph</button></div></div>' +
-    '<div class="cluster-list-panel"><div class="cluster-toolbar"><div class="cluster-search-shell"><span class="meta-pill">Search</span><input type="text" class="search-field" data-role="tab-query" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="Filter this tab" value="' + escapeHtml(tab.query || '') + '" /></div><div class="toolbar-row">' + (canLoadMore ? '<button type="button" class="toolbar-pill" data-action="load-more">Load more</button>' : '') + '<button type="button" class="toolbar-pill" data-action="refresh-imap">Refresh</button></div></div>' + (tab.selectedIds.length ? renderBatchToolbar(tab) : '') + (tab.searchLoading ? '<p class="toolbar-note">Searching…</p>' : '') + (tab.viewMode === 'graph' ? renderGraphShell(emails) : '<p class="toolbar-note">Showing ' + String(renderedCount) + ' of ' + String(emails.length) + ' emails.</p>' + renderClusterRows(tab, emails)) + '</div>' +
+    '<div class="view-header"><div><h1 class="view-title">' + escapeHtml(title.toLowerCase()) + '</h1><p class="view-subtitle">' + escapeHtml(subtitle) + '</p></div><div class="segmented"><button type="button" class="segmented-btn' + (tab.viewMode === 'list' ? ' active' : '') + '" data-action="set-cluster-view" data-tab-id="' + escapeHtml(tab.id) + '" data-view-mode="list">list</button><button type="button" class="segmented-btn' + (tab.viewMode === 'graph' ? ' active' : '') + '" data-action="set-cluster-view" data-tab-id="' + escapeHtml(tab.id) + '" data-view-mode="graph">graph</button></div></div>' +
+    '<div class="cluster-list-panel"><div class="cluster-toolbar"><div class="cluster-search-shell"><input type="text" class="search-field" data-role="tab-query" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="filter this tab…" value="' + escapeHtml(tab.query || '') + '" /></div><div class="toolbar-row">' + (canLoadMore ? '<button type="button" class="toolbar-pill" data-action="load-more">load more</button>' : '') + '<button type="button" class="toolbar-pill" data-action="refresh-imap">refresh</button></div></div>' + (tab.selectedIds.length ? renderBatchToolbar(tab) : '') + (tab.searchLoading ? '<p class="toolbar-note">searching…</p>' : '') + (tab.viewMode === 'graph' ? renderGraphShell(emails) : '<p class="toolbar-note">showing ' + String(renderedCount) + ' of ' + String(emails.length) + '</p>' + renderClusterRows(tab, emails)) + '</div>' +
   '</section>';
 }
 
 function renderThreadMessageCard(tab, message, active) {
   const expanded = tab.expandedMessageIds[message.id] || active;
-  return '<article class="message-card"><div class="message-card-head" data-action="toggle-thread-message" data-tab-id="' + escapeHtml(tab.id) + '" data-email-id="' + escapeHtml(message.id) + '"><div><div class="row-subject">' + escapeHtml(message.subject || '(no subject)') + '</div><div class="row-sender">' + escapeHtml(message.from || message.fromEmail || '') + '</div></div><div class="row-date">' + escapeHtml(formatDateTime(message.date)) + '</div></div>' + (expanded ? '<div class="message-card-body"><div class="message-body">' + renderEmailBody(message.body || '', !!message.bodyIsHtml) + '</div></div>' : '') + '</article>';
+  const cls = 'message-card' + (expanded ? ' expanded' : '');
+  return '<article class="' + cls + '">' +
+    '<div class="message-card-head" data-action="toggle-thread-message" data-tab-id="' + escapeHtml(tab.id) + '" data-email-id="' + escapeHtml(message.id) + '">' +
+      '<div>' +
+        '<div class="row-subject">' + escapeHtml(message.subject || '(no subject)') + '</div>' +
+        '<div class="row-sender" style="color:var(--fg-mute);font-size:12px;">from: ' + escapeHtml(message.from || message.fromEmail || '') + '</div>' +
+      '</div>' +
+      '<div class="row-date">' + escapeHtml(formatDateTime(message.date)) + '</div>' +
+    '</div>' +
+    (expanded ? '<div class="message-card-body"><div class="message-body">' + renderEmailBody(message.body || '', !!message.bodyIsHtml) + '</div></div>' : '') +
+  '</article>';
 }
 
 function renderEmailView(tab) {
   const email = getEmailById(tab.emailId);
-  if (!email) return '<section class="tab-view"><div class="state-block">This email is no longer available.</div></section>';
+  if (!email) return '<section class="tab-view"><div class="state-block">this email is no longer available.</div></section>';
   ensureThreadCacheBuilt();
   const thread = threadIndexByEmailId[email.id] || [email];
-  return '<section class="tab-view message-view"><div class="message-shell"><div class="message-reader"><h1 class="message-subject">' + escapeHtml(email.subject || '(no subject)') + '</h1><div class="message-meta-grid"><div class="message-meta-card"><span class="meta-label">From</span>' + escapeHtml(email.from || email.fromEmail || '') + '</div><div class="message-meta-card"><span class="meta-label">To</span>' + escapeHtml(email.toDisplay || email.to || '') + '</div><div class="message-meta-card"><span class="meta-label">Date</span>' + escapeHtml(formatDateTime(email.date)) + '</div></div><div class="message-actions"><button type="button" class="message-action-btn" data-action="reply-email" data-email-id="' + escapeHtml(email.id) + '">Reply</button><button type="button" class="message-action-btn" data-action="forward-email" data-email-id="' + escapeHtml(email.id) + '">Forward</button><select class="cluster-row-move" data-role="row-move" data-email-id="' + escapeHtml(email.id) + '">' + renderBookmarkOptions(true) + '</select><button type="button" class="message-action-btn" data-action="delete-email" data-email-id="' + escapeHtml(email.id) + '">Delete</button></div><div class="message-thread">' + thread.map((message) => renderThreadMessageCard(tab, message, message.id === email.id)).join('') + '</div></div><aside class="message-sidebar"><h2 class="surface-title">Thread</h2><p class="surface-copy">' + String(thread.length) + ' message(s) in this conversation.</p><div class="search-preview-list">' + thread.map((message) => '<button type="button" class="search-preview-row" data-action="switch-email-tab-message" data-tab-id="' + escapeHtml(tab.id) + '" data-email-id="' + escapeHtml(message.id) + '"><div class="row-subject">' + escapeHtml(message.subject || '(no subject)') + '</div><div class="row-sender">' + escapeHtml(message.from || message.fromEmail || '') + '</div><div class="row-date">' + escapeHtml(formatDate(message.date)) + '</div></button>').join('') + '</div></aside></div></section>';
+  return '<section class="tab-view message-view"><div class="message-shell">' +
+    '<div class="message-reader">' +
+      '<h1 class="message-subject">' + escapeHtml(email.subject || '(no subject)') + '</h1>' +
+      '<div class="message-meta-grid">' +
+        '<div class="message-meta-card"><span class="meta-label">from</span>' + escapeHtml(email.from || email.fromEmail || '') + '</div>' +
+        '<div class="message-meta-card"><span class="meta-label">to</span>' + escapeHtml(email.toDisplay || email.to || '') + '</div>' +
+        '<div class="message-meta-card"><span class="meta-label">date</span>' + escapeHtml(formatDateTime(email.date)) + '</div>' +
+      '</div>' +
+      '<div class="message-actions">' +
+        '<button type="button" class="message-action-btn" data-action="reply-email" data-email-id="' + escapeHtml(email.id) + '">reply</button>' +
+        '<button type="button" class="message-action-btn" data-action="forward-email" data-email-id="' + escapeHtml(email.id) + '">forward</button>' +
+        '<select class="cluster-row-move" data-role="row-move" data-email-id="' + escapeHtml(email.id) + '">' + renderBookmarkOptions(true) + '</select>' +
+        '<button type="button" class="message-action-btn" data-action="delete-email" data-email-id="' + escapeHtml(email.id) + '">delete</button>' +
+      '</div>' +
+      '<div class="message-thread">' + thread.map((message) => renderThreadMessageCard(tab, message, message.id === email.id)).join('') + '</div>' +
+    '</div>' +
+    '<aside class="message-sidebar">' +
+      '<h2 class="surface-title">thread</h2>' +
+      '<p class="surface-copy">' + String(thread.length) + ' message(s).</p>' +
+      '<div class="search-preview-list">' + thread.map((message) => '<button type="button" class="search-preview-row" data-action="switch-email-tab-message" data-tab-id="' + escapeHtml(tab.id) + '" data-email-id="' + escapeHtml(message.id) + '"><div class="row-subject">' + escapeHtml(message.subject || '(no subject)') + '</div><div class="row-sender" style="color:var(--fg-mute);font-size:12px;">' + escapeHtml(message.from || message.fromEmail || '') + '</div><div class="row-date">' + escapeHtml(formatDate(message.date)) + '</div></button>').join('') + '</div>' +
+    '</aside>' +
+  '</div></section>';
 }
 
 function renderAttachmentList(tab) {
-  if (!Array.isArray(tab.attachments) || !tab.attachments.length) return '<div class="state-block">No attachments yet.</div>';
+  if (!Array.isArray(tab.attachments) || !tab.attachments.length) return '<div class="state-block">no attachments.</div>';
   return tab.attachments.map((attachment) => {
     const parts = String(attachment.path || '').split(/[/\\]/);
     const label = attachment.filename || parts[parts.length - 1] || attachment.path || 'attachment';
-    return '<div class="compose-attachment-item"><span>' + escapeHtml(label) + '</span><button type="button" class="secondary-btn" data-action="remove-attachment" data-tab-id="' + escapeHtml(tab.id) + '" data-path="' + escapeHtml(attachment.path) + '">Remove</button></div>';
+    return '<div class="compose-attachment-item"><span>' + escapeHtml(label) + '</span><button type="button" class="secondary-btn" data-action="remove-attachment" data-tab-id="' + escapeHtml(tab.id) + '" data-path="' + escapeHtml(attachment.path) + '">remove</button></div>';
   }).join('');
 }
 
 function renderComposeView(tab) {
-  return '<section class="tab-view compose-view"><div class="view-header"><div><h1 class="view-title">' + escapeHtml(tab.title) + '</h1><p class="view-subtitle">Write in a dedicated tab, then switch back whenever you need.</p></div></div><div class="compose-shell"><div class="compose-panel"><div class="compose-fields"><input type="text" class="compose-field" data-role="compose-to" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="To" value="' + escapeHtml(tab.to) + '" /><input type="text" class="compose-field" data-role="compose-subject" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="Subject" value="' + escapeHtml(tab.subject) + '" /></div><div class="compose-toolbar"><button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="bold"><strong>B</strong></button><button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="italic"><em>I</em></button><button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="underline"><u>U</u></button><button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="insertUnorderedList">• List</button><button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="insertOrderedList">1. List</button><button type="button" class="compose-tool-btn" data-action="compose-link" data-tab-id="' + escapeHtml(tab.id) + '">Link</button><button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="unlink">Unlink</button></div><div class="compose-editor" contenteditable="true" spellcheck="true" data-role="compose-editor" data-tab-id="' + escapeHtml(tab.id) + '" data-placeholder="Write your message...">' + sanitizeComposeHtml(tab.bodyHtml) + '</div><div class="compose-actions"><button type="button" class="secondary-btn" data-action="compose-attach" data-tab-id="' + escapeHtml(tab.id) + '">Attach files</button><button type="button" class="primary-btn" data-action="send-compose" data-tab-id="' + escapeHtml(tab.id) + '">' + (tab.sending ? 'Sending…' : 'Send') + '</button></div><p class="compose-status ' + escapeHtml(tab.statusTone || 'muted') + '">' + escapeHtml(tab.status || '') + '</p></div><aside class="compose-side"><h2 class="surface-title">Attachments</h2><p class="surface-copy">Minimal formatting, tight spacing, and a dedicated compose tab.</p><div class="compose-attachment-list">' + renderAttachmentList(tab) + '</div></aside></div></section>';
+  return '<section class="tab-view compose-view">' +
+    '<div class="view-header"><div><h1 class="view-title">' + escapeHtml(tab.title.toLowerCase()) + '</h1><p class="view-subtitle">writing buffer · esc closes overlays</p></div></div>' +
+    '<div class="compose-shell">' +
+      '<div class="compose-panel">' +
+        '<div class="compose-fields">' +
+          '<div class="compose-row"><span class="compose-row-label">to</span><input type="text" data-role="compose-to" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="someone@example.com" value="' + escapeHtml(tab.to) + '" /></div>' +
+          '<div class="compose-row"><span class="compose-row-label">subject</span><input type="text" data-role="compose-subject" data-tab-id="' + escapeHtml(tab.id) + '" placeholder="(no subject)" value="' + escapeHtml(tab.subject) + '" /></div>' +
+        '</div>' +
+        '<div class="compose-toolbar">' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="bold">b</button>' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="italic">i</button>' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="underline">u</button>' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="insertUnorderedList">ul</button>' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="insertOrderedList">ol</button>' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-link" data-tab-id="' + escapeHtml(tab.id) + '">link</button>' +
+          '<button type="button" class="compose-tool-btn" data-action="compose-command" data-tab-id="' + escapeHtml(tab.id) + '" data-command="unlink">unlink</button>' +
+        '</div>' +
+        '<div class="compose-editor" contenteditable="true" spellcheck="true" data-role="compose-editor" data-tab-id="' + escapeHtml(tab.id) + '" data-placeholder="write your message…">' + sanitizeComposeHtml(tab.bodyHtml) + '</div>' +
+        '<div class="compose-actions">' +
+          '<button type="button" class="secondary-btn" data-action="compose-attach" data-tab-id="' + escapeHtml(tab.id) + '">attach</button>' +
+          '<button type="button" class="primary-btn" data-action="send-compose" data-tab-id="' + escapeHtml(tab.id) + '">' + (tab.sending ? 'sending…' : 'send') + '</button>' +
+        '</div>' +
+        '<p class="compose-status ' + escapeHtml(tab.statusTone || 'muted') + '">' + escapeHtml(tab.status || '') + '</p>' +
+      '</div>' +
+      '<aside class="compose-side">' +
+        '<h2 class="surface-title">attachments</h2>' +
+        '<p class="surface-copy">minimal formatting. dedicated compose buffer.</p>' +
+        '<div class="compose-attachment-list">' + renderAttachmentList(tab) + '</div>' +
+      '</aside>' +
+    '</div>' +
+  '</section>';
 }
 
 function renderGraphForTab(tab) {
@@ -914,6 +1092,7 @@ async function refreshFromImap() {
   try {
     const config = await window.electronAPI.imap.getConfig();
     const accountKey = config && config.host && config.user ? config.host + '::' + config.user : '';
+    if (config && config.host) imapHostLabel = config.host + (config.user ? ' / ' + config.user : '');
     const result = await window.electronAPI.imap.fetch(150);
     if (!result.ok) {
       if (!String(result.error || '').includes('not configured')) alert('IMAP refresh failed: ' + (result.error || 'Unknown error'));
@@ -1531,10 +1710,9 @@ function handleDocumentClick(event) {
   else if (action === 'close-tab') { event.stopPropagation(); closeTab(actionEl.dataset.tabId); }
   else if (action === 'open-bookmark-tab') openBookmarkTab(actionEl.dataset.bookmarkId);
   else if (action === 'open-compose-tab') openComposeTab();
-  else if (action === 'toggle-theme') { appState.theme = appState.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem(THEME_KEY, appState.theme); renderApp(); }
+  else if (action === 'focus-smart-cluster') focusSmartClusterPrompt();
   else if (action === 'open-settings') openSettings();
   else if (action === 'go-home') openHomeTab();
-  else if (action === 'open-all-mail-tab') openAllMailTab();
   else if (action === 'open-mailbox-tab') openSystemTab(actionEl.dataset.systemId, actionEl.dataset.label, actionEl.dataset.icon);
   else if (action === 'refresh-imap') refreshFromImap();
   else if (action === 'load-more') loadMoreImapEmails();
@@ -1545,7 +1723,7 @@ function handleDocumentClick(event) {
   else if (action === 'clear-selection') clearClusterSelection(actionEl.dataset.tabId);
   else if (action === 'expand-cluster-list') expandClusterList(actionEl.dataset.tabId);
   else if (action === 'toggle-thread-message') { const tab = appState.tabs.find((item) => item.id === actionEl.dataset.tabId && item.type === 'emailThread'); if (tab) { tab.expandedMessageIds[actionEl.dataset.emailId] = !tab.expandedMessageIds[actionEl.dataset.emailId]; renderActiveView(); } }
-  else if (action === 'switch-email-tab-message') { const tab = appState.tabs.find((item) => item.id === actionEl.dataset.tabId && item.type === 'emailThread'); if (tab) { tab.emailId = actionEl.dataset.emailId; tab.expandedMessageIds[actionEl.dataset.emailId] = true; const email = getEmailById(actionEl.dataset.emailId); if (email) { tab.title = truncate(email.subject || '(no subject)', 34); tab.iconLabel = initialsFromText(email.fromEmail || email.from || email.subject || 'E'); } renderApp(); ensureEmailBodyLoaded(actionEl.dataset.emailId); } }
+  else if (action === 'switch-email-tab-message') { const tab = appState.tabs.find((item) => item.id === actionEl.dataset.tabId && item.type === 'emailThread'); if (tab) { tab.emailId = actionEl.dataset.emailId; tab.expandedMessageIds[actionEl.dataset.emailId] = true; const email = getEmailById(actionEl.dataset.emailId); if (email) { tab.title = truncate(email.subject || '(no subject)', 34); tab.iconName = 'mail-open'; } renderApp(); ensureEmailBodyLoaded(actionEl.dataset.emailId); } }
   else if (action === 'reply-email') replyEmail(actionEl.dataset.emailId);
   else if (action === 'forward-email') forwardEmail(actionEl.dataset.emailId);
   else if (action === 'delete-email') handleDeleteEmail(actionEl.dataset.emailId);
@@ -1591,6 +1769,13 @@ function handleDocumentScroll(event) {
   expandClusterList(container.dataset.tabId);
 }
 
+function focusSmartClusterPrompt() {
+  const input = document.getElementById('prompt-cluster-input');
+  if (!input) return;
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  input.focus();
+}
+
 async function initialize() {
   renderApp();
   if (typeof window.electronAPI !== 'undefined' && window.electronAPI.embeddings && window.electronAPI.embeddings.onProgress) {
@@ -1599,6 +1784,7 @@ async function initialize() {
   if (typeof window.electronAPI !== 'undefined' && window.electronAPI.imap) {
     const config = await window.electronAPI.imap.getConfig();
     const accountKey = config && config.host && config.user ? config.host + '::' + config.user : '';
+    if (config && config.host) imapHostLabel = config.host + (config.user ? ' / ' + config.user : '');
     if (accountKey) {
       imapEmails = await getCachedEmails(accountKey);
       invalidateEmailCollections();

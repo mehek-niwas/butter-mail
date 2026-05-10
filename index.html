@@ -3,40 +3,52 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>butter mail</title>
+    <title>butter-mail ~ terminal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body data-theme="dark">
+  <body>
     <div class="app-shell">
-      <header class="browser-chrome">
-        <div class="chrome-brand">
-          <img src="assets/butter-mail-logo.webp" alt="Butter Mail" class="brand-logo" />
-          <div class="brand-copy">
-            <span class="brand-name">butter mail</span>
-            <span class="brand-subtitle">calm email browsing</span>
-          </div>
-        </div>
-        <div class="tab-strip-wrap">
-          <div class="tab-strip" id="tab-strip" aria-label="Open tabs"></div>
-        </div>
-        <div class="chrome-actions">
-          <button type="button" class="chrome-btn" id="header-compose-btn" data-action="open-compose-tab">Compose</button>
-          <button type="button" class="chrome-btn" id="theme-toggle-btn" data-action="toggle-theme">Light</button>
-          <button type="button" class="chrome-btn" id="settings-btn" data-action="open-settings">Settings</button>
-        </div>
+      <header class="terminal-titlebar">
+        <span class="titlebar-brand">
+          <img src="assets/butter-mail-logo.webp" alt="" class="brand-logo" />
+          <span>butter-mail v0.1</span>
+        </span>
+        <span class="titlebar-session" id="titlebar-session">—</span>
+        <span class="titlebar-rule"></span>
+        <span class="titlebar-windowglyphs" aria-hidden="true">[ &minus; &#9633; &times; ]</span>
       </header>
 
-      <div class="bookmark-bar-wrap">
-        <div class="bookmark-bar" id="bookmark-bar" aria-label="Bookmarks"></div>
-        <button type="button" class="bookmark-create-btn" id="bookmark-create-btn" data-action="open-cluster-editor" title="Create cluster" aria-label="Create cluster">+</button>
+      <div class="prompt-bar">
+        <span class="prompt-glyph">&gt;</span>
+        <span class="prompt-cursor" aria-hidden="true"></span>
+        <div class="prompt-actions">
+          <button type="button" class="chrome-btn" id="header-compose-btn" data-action="open-compose-tab">[c]ompose</button>
+          <button type="button" class="chrome-btn" data-action="refresh-imap">[r]efresh</button>
+          <button type="button" class="chrome-btn" id="settings-btn" data-action="open-settings">[s]ettings</button>
+        </div>
       </div>
 
+      <nav class="tab-line" id="tab-strip" aria-label="Open tabs"></nav>
+
       <main class="workspace">
+        <div class="bookmark-bar-wrap">
+          <div class="bookmark-bar" id="bookmark-bar" aria-label="Bookmarks"></div>
+          <button type="button" class="bookmark-create-btn" id="bookmark-create-btn" data-action="open-cluster-editor" title="Create cluster" aria-label="Create cluster">+cluster</button>
+        </div>
         <div class="view-host" id="view-host" aria-live="polite"></div>
       </main>
+
+      <footer class="status-line" id="status-line">
+        <span class="status-seg" id="status-msgs">0 msgs</span>
+        <span class="status-seg" id="status-sync">idle</span>
+        <span class="status-seg" id="status-host">imap: —</span>
+        <span class="status-spacer"></span>
+        <span class="status-seg status-tone-muted" id="global-status-line">ready.</span>
+        <span class="status-seg" id="status-clock">--:--</span>
+      </footer>
     </div>
 
     <div class="floating-tooltip hidden" id="floating-tooltip"></div>
@@ -46,23 +58,23 @@
       <div class="modal-panel">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title">IMAP settings</h2>
-            <p class="modal-copy">Gmail: `imap.gmail.com:993` with an app password. Outlook: `outlook.office365.com:993`.</p>
+            <h2 class="modal-title">imap settings</h2>
+            <p class="modal-copy">gmail: imap.gmail.com:993 (app password). outlook: outlook.office365.com:993.</p>
           </div>
-          <button type="button" class="modal-close" data-action="close-overlay" data-overlay-id="settings-overlay" aria-label="Close settings">&times;</button>
+          <button type="button" class="modal-close" data-action="close-overlay" data-overlay-id="settings-overlay" aria-label="Close settings">[x]</button>
         </div>
         <form class="modal-form" id="settings-form">
-          <label for="settings-host">Host</label>
+          <label for="settings-host">host</label>
           <input id="settings-host" name="host" type="text" placeholder="imap.gmail.com" required />
-          <label for="settings-port">Port</label>
+          <label for="settings-port">port</label>
           <input id="settings-port" name="port" type="number" value="993" />
-          <label for="settings-user">Email</label>
+          <label for="settings-user">email</label>
           <input id="settings-user" name="user" type="email" placeholder="you@example.com" required />
-          <label for="settings-pass">Password / App Password</label>
+          <label for="settings-pass">password / app password</label>
           <input id="settings-pass" name="pass" type="password" required />
           <div class="modal-actions">
-            <button type="button" class="secondary-btn" id="settings-test">Test connection</button>
-            <button type="submit" class="primary-btn">Save</button>
+            <button type="button" class="secondary-btn" id="settings-test">test connection</button>
+            <button type="submit" class="primary-btn">save</button>
           </div>
           <p class="modal-status" id="settings-status"></p>
         </form>
@@ -73,20 +85,20 @@
       <div class="modal-panel">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title" id="cluster-editor-title">Create cluster</h2>
-            <p class="modal-copy" id="cluster-editor-copy">Create a user-managed bookmark for email triage.</p>
+            <h2 class="modal-title" id="cluster-editor-title">create cluster</h2>
+            <p class="modal-copy" id="cluster-editor-copy">create a user-managed bookmark for email triage.</p>
           </div>
-          <button type="button" class="modal-close" data-action="close-overlay" data-overlay-id="cluster-editor-overlay" aria-label="Close cluster editor">&times;</button>
+          <button type="button" class="modal-close" data-action="close-overlay" data-overlay-id="cluster-editor-overlay" aria-label="Close cluster editor">[x]</button>
         </div>
         <form class="modal-form" id="cluster-editor-form">
           <input type="hidden" id="cluster-editor-bookmark-id" />
-          <label for="cluster-editor-name">Name</label>
+          <label for="cluster-editor-name">name</label>
           <input id="cluster-editor-name" type="text" maxlength="60" required />
-          <label for="cluster-editor-description">Description</label>
-          <textarea id="cluster-editor-description" rows="4" placeholder="Optional description shown in bookmark tooltips."></textarea>
+          <label for="cluster-editor-description">description</label>
+          <textarea id="cluster-editor-description" rows="4" placeholder="optional description shown in bookmark tooltips."></textarea>
           <div class="modal-actions">
-            <button type="button" class="secondary-btn" data-action="close-overlay" data-overlay-id="cluster-editor-overlay">Cancel</button>
-            <button type="submit" class="primary-btn" id="cluster-editor-submit">Save</button>
+            <button type="button" class="secondary-btn" data-action="close-overlay" data-overlay-id="cluster-editor-overlay">cancel</button>
+            <button type="submit" class="primary-btn" id="cluster-editor-submit">save</button>
           </div>
         </form>
       </div>
@@ -96,21 +108,21 @@
       <div class="modal-panel modal-panel-wide">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title" id="cluster-threshold-title">Create cluster</h2>
-            <p class="modal-copy" id="cluster-threshold-hint">Review the suggested matches, click rows to include or exclude them, and adjust the threshold.</p>
+            <h2 class="modal-title" id="cluster-threshold-title">create cluster</h2>
+            <p class="modal-copy" id="cluster-threshold-hint">click rows to include or exclude them. drag the threshold to widen or narrow the cluster.</p>
           </div>
-          <button type="button" class="modal-close" data-action="close-threshold-overlay" aria-label="Close prompt cluster review">&times;</button>
+          <button type="button" class="modal-close" data-action="close-threshold-overlay" aria-label="Close prompt cluster review">[x]</button>
         </div>
         <div class="cluster-results-list" id="cluster-threshold-results"></div>
         <div class="cluster-threshold-row">
-          <label for="cluster-threshold-slider">Threshold</label>
+          <label for="cluster-threshold-slider">threshold</label>
           <input type="range" id="cluster-threshold-slider" min="0" max="1" step="0.05" value="0.3" />
           <span class="cluster-threshold-value" id="cluster-threshold-value">0.30</span>
         </div>
-        <p class="modal-copy modal-copy-tight" id="cluster-threshold-count">0 emails in cluster</p>
-        <div class="modal-actions">
-          <button type="button" class="secondary-btn" data-action="close-threshold-overlay">Cancel</button>
-          <button type="button" class="primary-btn" id="cluster-threshold-create">Create cluster</button>
+        <p class="modal-copy modal-copy-tight" id="cluster-threshold-count" style="padding: 0 12px; color: var(--fg-mute);">0 emails in cluster</p>
+        <div class="modal-actions" style="padding: 0 12px 12px;">
+          <button type="button" class="secondary-btn" data-action="close-threshold-overlay">cancel</button>
+          <button type="button" class="primary-btn" id="cluster-threshold-create">create cluster</button>
         </div>
       </div>
     </div>

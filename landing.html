@@ -3,241 +3,213 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Butter Mail — Welcome to your spread</title>
+    <title>butter-mail ~ welcome</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       :root {
-        /* Dark / brown / toast theme */
-        --toast-bg: #1a1510;
-        --toast-surface: #231d17;
-        --toast-card: #2d261e;
-        --toast-border: rgba(229, 201, 74, 0.12);
-        --cream: #e8e0d0;
-        --cream-muted: #b8a88a;
-        --butter: #e5b80b;
-        --butter-soft: rgba(229, 184, 11, 0.2);
-        --brown: #e8e0d0;
-        --brown-muted: #a89878;
+        --bg: #0c0a08;
+        --bg-raised: #14110d;
+        --fg: #f0d68a;
+        --fg-dim: #b89456;
+        --fg-mute: #6a5630;
+        --accent: #ffcc4d;
+        --accent-hot: #ffe28a;
+        --border: #2a2014;
+        --border-hot: #4a3a1c;
       }
 
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body { height: 100%; }
 
       body {
-        font-family: 'DM Sans', system-ui, sans-serif;
-        min-height: 100vh;
-        background: var(--toast-bg);
-        color: var(--brown);
+        font-family: "JetBrains Mono", "IBM Plex Mono", Consolas, monospace;
+        font-size: 13px;
+        background: var(--bg);
+        color: var(--fg);
         display: flex;
         align-items: center;
         justify-content: center;
-        overflow-x: hidden;
+        padding: 24px;
+        overflow: hidden;
       }
 
-      /* Subtle grain overlay */
-      .page {
-        position: relative;
-        width: 100%;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem;
-      }
-
-      .page::before {
-        content: '';
-        position: absolute;
+      body::after {
+        content: "";
+        position: fixed;
         inset: 0;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
         pointer-events: none;
+        background:
+          repeating-linear-gradient(to bottom,
+            rgba(255, 204, 77, 0.012) 0,
+            rgba(255, 204, 77, 0.012) 1px,
+            transparent 1px,
+            transparent 3px),
+          radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 100%);
       }
 
-      .hero {
-        position: relative;
-        text-align: center;
-        max-width: 32rem;
+      .terminal {
+        width: min(720px, 100%);
+        border: 1px solid var(--accent);
+        background: var(--bg);
+        box-shadow: 0 0 0 1px var(--bg), 0 0 32px rgba(255, 204, 77, 0.08);
       }
 
-      /* Logo block */
-      .logo-block {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 0.75rem;
-        margin-bottom: 1.5rem;
-        animation: fadeInDown 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-      }
-
-      .logo-block .logo-imgs {
+      .terminal-titlebar {
         display: flex;
         align-items: center;
-        justify-content: center;
-        gap: 0.75rem;
+        justify-content: space-between;
+        padding: 4px 10px;
+        background: var(--bg-raised);
+        border-bottom: 1px solid var(--border-hot);
+      }
+      .titlebar-brand {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .titlebar-glyphs {
+        color: var(--fg-mute);
+        letter-spacing: 4px;
       }
 
-      .logo-block img {
-        height: 3.5rem;
-        width: auto;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
+      .terminal-body {
+        padding: 16px 18px 18px;
+        line-height: 1.55;
       }
 
-      .logo-block .logo-text {
-        font-family: 'Press Start 2P', monospace;
-        font-size: 1.5rem;
+      .ascii-banner {
+        color: var(--accent);
+        white-space: pre;
+        font-size: 12px;
+        line-height: 1.1;
+        margin-bottom: 14px;
+      }
+
+      .banner-row {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 14px;
+      }
+      .banner-row .ascii-banner { margin-bottom: 0; flex: 1; }
+      .banner-art {
+        width: 96px;
+        height: 96px;
+        object-fit: contain;
+        image-rendering: -webkit-optimize-contrast;
+        filter: drop-shadow(0 0 12px rgba(255, 204, 77, 0.25));
+        flex-shrink: 0;
+      }
+      @media (max-width: 520px) {
+        .banner-art { width: 64px; height: 64px; }
+      }
+
+      .prompt-line {
+        color: var(--fg);
+        margin: 4px 0;
+      }
+      .prompt-line .glyph {
+        color: var(--accent);
         font-weight: 700;
-        color: var(--butter);
-        letter-spacing: 0.02em;
+        margin-right: 8px;
       }
+      .prompt-line .out { color: var(--fg-dim); }
+      .prompt-line .ok { color: #9ad17a; }
 
-      .welcome {
-        font-size: 1.25rem;
-        font-weight: 500;
-        color: var(--cream-muted);
-        margin-bottom: 2.5rem;
-        animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+      .tagline {
+        margin: 12px 0;
+        color: var(--fg-dim);
+        min-height: 1.6em;
       }
-
-      /* Animated tagline strip */
-      .tagline-wrap {
-        position: relative;
-        min-height: 2.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
-      }
-
-      .tagline-inner {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: 0.5rem 1rem;
-        padding: 0.75rem 1.25rem;
-        background: var(--toast-card);
-        border: 1px solid var(--toast-border);
-        border-radius: 9999px;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-      }
-
-      .tagline-static {
-        font-size: 0.95rem;
-        color: var(--cream-muted);
-        font-weight: 500;
-      }
-
+      .tagline .label { color: var(--fg-mute); margin-right: 8px; }
       .tagline-rotating {
+        display: inline-block;
         position: relative;
         min-width: 22ch;
         height: 1.5em;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
       }
-
       .tagline-rotating span {
         position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 0;
+        top: 0;
         white-space: nowrap;
-        font-weight: 600;
-        color: var(--cream);
+        color: var(--fg);
       }
 
-      /* CTA link to app */
-      .cta-wrap {
-        margin-top: 2.5rem;
-        animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both;
+      .cursor {
+        display: inline-block;
+        width: 8px;
+        height: 14px;
+        background: var(--accent);
+        vertical-align: -2px;
+        animation: blink 1s steps(1) infinite;
       }
+      @keyframes blink { 50% { opacity: 0; } }
 
       .cta {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem 1.5rem;
-        background: var(--butter);
-        color: var(--toast-bg);
-        font-weight: 600;
-        font-size: 0.95rem;
+        display: inline-block;
+        margin-top: 18px;
+        padding: 4px 14px;
+        color: var(--bg);
+        background: var(--accent);
         text-decoration: none;
-        border-radius: 9999px;
-        box-shadow: 0 4px 20px rgba(229, 184, 11, 0.35);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        font-weight: 600;
+        border: 1px solid var(--accent);
       }
+      .cta::before { content: "[ "; }
+      .cta::after  { content: " ]"; }
+      .cta:hover { background: var(--accent-hot); border-color: var(--accent-hot); }
 
-      .cta:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 28px rgba(229, 184, 11, 0.5);
-      }
-
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
-
-      @keyframes fadeInDown {
-        from {
-          opacity: 0;
-          transform: translateY(-16px);
-        }
-        to {
-          opacity: 1;
-        }
-      }
-
-      /* Fallback when images fail */
-      .logo-block .logo-fallback {
-        display: none;
-        font-size: 2rem;
-      }
-
-      .logo-block:has(.logo-img[data-loaded="false"]) .logo-fallback {
-        display: block;
+      .footer {
+        margin-top: 16px;
+        padding-top: 10px;
+        border-top: 1px dashed var(--border-hot);
+        color: var(--fg-mute);
+        font-size: 12px;
       }
     </style>
   </head>
   <body>
-    <div class="page">
-      <div class="hero">
-        <div class="logo-block">
-          <div class="logo-imgs">
-            <img src="assets/butter-mail-logo.webp" alt="" class="logo-img" aria-hidden />
-            <img src="assets/bread-butter.webp" alt="" class="logo-img" aria-hidden />
-          </div>
-          <span class="logo-text">butter mail</span>
+    <div class="terminal">
+      <div class="terminal-titlebar">
+        <span class="titlebar-brand">butter-mail v0.1 — welcome</span>
+        <span class="titlebar-glyphs">[ &minus; &#9633; &times; ]</span>
+      </div>
+      <div class="terminal-body">
+<div class="banner-row">
+<pre class="ascii-banner">  _           _   _                                _ _
+ | |__  _   _| |_| |_ ___ _ __        _ __ ___   __ _(_) |
+ | '_ \| | | | __| __/ _ \ '__|_____ | '_ ` _ \ / _` | | |
+ | |_) | |_| | |_| ||  __/ |  |_____|| | | | | | (_| | | |
+ |_.__/ \__,_|\__|\__\___|_|         |_| |_| |_|\__,_|_|_|
+</pre>
+          <img class="banner-art" src="assets/bread-butter.webp" alt="bread with butter" />
         </div>
+        <p class="prompt-line"><span class="glyph">$</span>echo "welcome to your spread."</p>
+        <p class="prompt-line"><span class="out">welcome to your spread.</span></p>
+        <p class="prompt-line"><span class="glyph">$</span>butter-mail --status</p>
+        <p class="prompt-line"><span class="out">local cache: ready · embeddings: optional · imap: configurable</span> <span class="ok">[ok]</span></p>
 
-        <p class="welcome">Welcome to your spread.</p>
+        <p class="tagline">
+          <span class="label">$ tagline:</span>
+          <span class="tagline-rotating" aria-live="polite">
+            <span>the better mail.</span>
+            <span>smart search, ai clusters.</span>
+            <span>your data stays local.</span>
+            <span>list, graph &amp; thread views.</span>
+            <span>embeddings that make sense.</span>
+          </span>
+          <span class="cursor" aria-hidden="true"></span>
+        </p>
 
-        <div class="tagline-wrap">
-          <div class="tagline-inner">
-            <span class="tagline-static">Try Butter Mail —</span>
-            <span class="tagline-rotating" aria-live="polite">
-              <span>the better mail.</span>
-              <span>smart search, AI clusters.</span>
-              <span>your data stays local.</span>
-              <span>list, graph & thread views.</span>
-              <span>embeddings that make sense.</span>
-              <span>the better mail.</span>
-            </span>
-          </div>
-        </div>
+        <p class="prompt-line"><span class="glyph">&gt;</span>open butter-mail
+          <a href="index.html" class="cta">open butter-mail</a>
+        </p>
 
-        <div class="cta-wrap">
-          <a href="index.html" class="cta">Open Butter Mail →</a>
+        <div class="footer">
+          tip: clusters and embeddings stay on your machine. no telemetry.
         </div>
       </div>
     </div>
@@ -248,27 +220,16 @@
         if (!rotating) return;
         var spans = rotating.querySelectorAll('span');
         if (spans.length < 2) return;
-
-        var duration = 3200;
-        var total = spans.length;
         var current = 0;
-        var centerX = 'translateX(-50%)';
-
-        function showNext() {
-          spans[current].style.opacity = '0';
-          spans[current].style.transform = centerX + ' translateY(-6px)';
-          current = (current + 1) % total;
-          spans[current].style.opacity = '1';
-          spans[current].style.transform = centerX + ' translateY(0)';
-        }
-
         spans.forEach(function (s, i) {
-          s.style.transition = 'opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)';
+          s.style.transition = 'opacity 0.5s ease';
           s.style.opacity = i === 0 ? '1' : '0';
-          s.style.transform = i === 0 ? centerX + ' translateY(0)' : centerX + ' translateY(6px)';
         });
-
-        setInterval(showNext, duration);
+        setInterval(function () {
+          spans[current].style.opacity = '0';
+          current = (current + 1) % spans.length;
+          spans[current].style.opacity = '1';
+        }, 3200);
       })();
     </script>
   </body>

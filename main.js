@@ -138,7 +138,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile('index.html');
+  mainWindow.loadFile('landing.html');
 }
 
 app.whenReady().then(createWindow);

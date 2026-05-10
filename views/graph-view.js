@@ -22,7 +22,9 @@
     return tex;
   }
 
-  const AXIS_COLOR = 0x525252;
+  const AXIS_COLOR = 0x4a3a1c;
+  const BG_COLOR = 0x0a0805;
+  const DEFAULT_POINT_COLOR = '#ffcc4d';
 
   function createAxes(extent) {
     const group = new THREE.Group();
@@ -65,7 +67,7 @@
     const height = container.clientHeight;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
+    scene.background = new THREE.Color(BG_COLOR);
 
     camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
     camera.position.set(6, 5, 6);
@@ -73,7 +75,7 @@
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x1a1a1a, 1);
+    renderer.setClearColor(BG_COLOR, 1);
 
     if (typeof THREE.OrbitControls !== 'undefined') {
       controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -192,7 +194,7 @@
       positions.push((p[0] || 0) * scale, (p[1] || 0) * scale, (p[2] || 0) * scale);
       const email = emailsById && emailsById[emailId];
       const catId = email && email.categoryId;
-      const hex = (catId && window.getCategoryColor) ? window.getCategoryColor(catId) : '#B8952E';
+      const hex = (catId && window.getCategoryColor) ? window.getCategoryColor(catId) : DEFAULT_POINT_COLOR;
       const c = new THREE.Color(hex);
       colors.push(c.r, c.g, c.b);
     });
