@@ -6,7 +6,6 @@ const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
 const embeddingsService = require('./embeddings-service');
 const pcaUtils = require('./pca-utils');
-const clustering = require('./clustering');
 const searchService = require('./search-service');
 
 const configPath = path.join(app.getPath('userData'), 'imap-config.json');
@@ -589,20 +588,6 @@ ipcMain.handle('embeddings:pca', async (_, embeddings, emailIds) => {
   }
 });
 
-ipcMain.handle('embeddings:cluster', async (_, embeddings, emailIds) => {
-  try {
-    const matrix = emailIds.map((id) => embeddings[id]).filter(Boolean);
-    const ids = emailIds.filter((id) => embeddings[id]);
-    if (matrix.length === 0) return { ok: true, assignments: {}, meta: {} };
-    console.log('[butter-mail] clustering: running DBSCAN on', ids.length, 'emails');
-    const { assignments, meta } = clustering.cluster(matrix, ids);
-    console.log('[butter-mail] clustering: done.');
-    return { ok: true, assignments, meta };
-  } catch (err) {
-    return { ok: false, error: err.message || String(err) };
-  }
-});
-
 ipcMain.handle('embeddings:query', async (_, query) => {
   try {
     const vec = await embeddingsService.computeQueryEmbedding(query);
@@ -618,18 +603,6 @@ ipcMain.handle('search:hybrid', async (_, query, emails, embeddings) => {
     return { ok: true, emails: results };
   } catch (err) {
     return { ok: false, error: err.message || String(err), emails: [] };
-  }
-});
-
-ipcMain.handle('embeddings:promptCluster', async (_, prompt, embeddings, emailIds, threshold = 0.5) => {
-  try {
-    console.log('[butter-mail] embeddings:promptCluster starting. Prompt:', prompt, 'Emails:', emailIds ? emailIds.length : 0, 'Threshold:', threshold);
-    const ids = await searchService.emailsBySimilarityToPrompt(prompt, embeddings, emailIds, threshold);
-    console.log('[butter-mail] embeddings:promptCluster finished. Matched emails:', ids ? ids.length : 0);
-    return { ok: true, emailIds: ids };
-  } catch (err) {
-    console.error('[butter-mail] embeddings:promptCluster failed:', err);
-    return { ok: false, error: err.message || String(err), emailIds: [] };
   }
 });
 

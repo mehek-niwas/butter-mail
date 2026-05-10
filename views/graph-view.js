@@ -4,27 +4,91 @@
 (function () {
   let scene, camera, renderer, controls, pointsGroup, axesGroup, raycaster, mouse;
 
-  function createSharpPointTexture() {
+  const AXIS_COLOR = 0x4a3a1c;
+  const BG_COLOR = 0x0a0805;
+  const DEFAULT_POINT_COLOR = '#ffcc4d';
+
+  const textureCache = {};
+
+  function makeSolidDotTexture(hex) {
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const r = size / 2 - 1;
-    ctx.fillStyle = 'white';
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2 - 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, hex);
+    grad.addColorStop(0.7, hex);
+    grad.addColorStop(1, hex + '00');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
     const tex = new THREE.CanvasTexture(canvas);
     tex.needsUpdate = true;
-    tex.minFilter = THREE.NearestFilter;
-    tex.magFilter = THREE.NearestFilter;
     return tex;
   }
 
-  const AXIS_COLOR = 0x4a3a1c;
-  const BG_COLOR = 0x0a0805;
-  const DEFAULT_POINT_COLOR = '#ffcc4d';
+  function makeSwirlTexture(colors) {
+    const size = 96;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2 - 2;
+    const n = colors.length;
+    const sweep = (Math.PI * 2) / n;
+    const layers = 3;
+    for (let layer = 0; layer < layers; layer++) {
+      const inner = (r * layer) / layers;
+      const outer = (r * (layer + 1)) / layers;
+      const rotation = (layer * Math.PI) / (n * 2);
+      for (let i = 0; i < n; i++) {
+        const start = i * sweep + rotation;
+        const end = start + sweep + 0.04;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(start) * inner, cy + Math.sin(start) * inner);
+        ctx.arc(cx, cy, outer, start, end, false);
+        ctx.arc(cx, cy, inner, end, start, true);
+        ctx.closePath();
+        ctx.fillStyle = colors[i];
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    const fade = ctx.createRadialGradient(cx, cy, r * 0.65, cx, cy, r);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalCompositeOperation = 'source-over';
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  function getGroupTexture(colors) {
+    const key = colors.length === 0 ? '__default__' : colors.slice().sort().join('|');
+    if (textureCache[key]) return textureCache[key];
+    let tex;
+    if (colors.length === 0) tex = makeSolidDotTexture(DEFAULT_POINT_COLOR);
+    else if (colors.length === 1) tex = makeSolidDotTexture(colors[0]);
+    else tex = makeSwirlTexture(colors);
+    textureCache[key] = tex;
+    return tex;
+  }
+
+  function colorSetKey(colors) {
+    if (!colors || !colors.length) return '__default__';
+    return colors.slice().sort().join('|');
+  }
 
   function createAxes(extent) {
     const group = new THREE.Group();
@@ -188,36 +252,35 @@
     });
     const scale = 3.2 / maxAbs;
 
-    const positions = [];
-    const colors = [];
+    const groups = {};
     arr.forEach(([emailId, p]) => {
-      positions.push((p[0] || 0) * scale, (p[1] || 0) * scale, (p[2] || 0) * scale);
       const email = emailsById && emailsById[emailId];
-      const catId = email && email.categoryId;
-      const hex = (catId && window.getCategoryColor) ? window.getCategoryColor(catId) : DEFAULT_POINT_COLOR;
-      const c = new THREE.Color(hex);
-      colors.push(c.r, c.g, c.b);
+      const colors = (email && Array.isArray(email.clusterColors)) ? email.clusterColors : [];
+      const key = colorSetKey(colors);
+      if (!groups[key]) groups[key] = { colors, entries: [], positions: [] };
+      groups[key].entries.push([emailId, p]);
+      groups[key].positions.push((p[0] || 0) * scale, (p[1] || 0) * scale, (p[2] || 0) * scale);
     });
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-    const pointTexture = createSharpPointTexture();
-    const material = new THREE.PointsMaterial({
-      size: 0.32,
-      vertexColors: true,
-      sizeAttenuation: true,
-      map: pointTexture,
-      transparent: false,
-      opacity: 1,
-      depthWrite: true,
-      blending: THREE.NormalBlending
+    Object.keys(groups).forEach((key) => {
+      const grp = groups[key];
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(grp.positions, 3));
+      const texture = getGroupTexture(grp.colors);
+      const material = new THREE.PointsMaterial({
+        size: grp.colors.length > 1 ? 0.42 : 0.32,
+        sizeAttenuation: true,
+        map: texture,
+        transparent: true,
+        alphaTest: 0.05,
+        depthWrite: false,
+        blending: THREE.NormalBlending
+      });
+      const points = new THREE.Points(geometry, material);
+      points.userData.entries = grp.entries;
+      points.userData.emailsById = emailsById || {};
+      pointsGroup.add(points);
     });
-    const points = new THREE.Points(geometry, material);
-    points.userData.entries = arr;
-    points.userData.emailsById = emailsById || {};
-    pointsGroup.add(points);
   }
 
   function render(pointsData, emailsById) {

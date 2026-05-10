@@ -7,10 +7,10 @@
   --bg-soft: rgba(255, 204, 77, 0.06);
   --bg-hot: rgba(255, 204, 77, 0.14);
 
-  --fg: #f0d68a;
+  --fg: #f5dc92;
   --fg-bright: #fff1c2;
-  --fg-dim: #b89456;
-  --fg-mute: #6a5630;
+  --fg-dim: #e3c279;
+  --fg-mute: #a88a4f;
 
   --accent: #ffcc4d;
   --accent-hot: #ffe28a;
@@ -279,6 +279,23 @@ img { display: block; max-width: 100%; }
 }
 .bookmark-pill .glyph {
   opacity: 0.7;
+}
+.bookmark-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+#cluster-editor-color {
+  width: 56px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border, #444);
+  background: transparent;
+  cursor: pointer;
 }
 .bookmark-create-btn {
   flex-shrink: 0;

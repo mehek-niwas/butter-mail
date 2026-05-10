@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'butter-mail-emails';
 const EMBEDDINGS_KEY = 'butter-mail-embeddings';
-const CATEGORIES_KEY = 'butter-mail-categories';
 const PCA_KEY = 'butter-mail-pca';
 const PCA_POINTS_KEY = 'butter-mail-pca-points';
 const PROMPT_CLUSTERS_KEY = 'butter-mail-prompt-clusters';
@@ -18,6 +17,11 @@ const SANITIZE_OPTS = {
   ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel']
 };
 
+const CLUSTER_COLOR_PALETTE = ['#B8952E', '#7B4BA6', '#A8348A', '#2A7B8A', '#4A9B3A', '#9B5A2A', '#C0533F', '#3F6FC0'];
+function nextClusterColor(existingCount) {
+  return CLUSTER_COLOR_PALETTE[existingCount % CLUSTER_COLOR_PALETTE.length];
+}
+
 const dom = {
   body: document.body,
   tabStrip: document.getElementById('tab-strip'),
@@ -34,6 +38,7 @@ const dom = {
   clusterEditorCopy: document.getElementById('cluster-editor-copy'),
   clusterEditorBookmarkId: document.getElementById('cluster-editor-bookmark-id'),
   clusterEditorName: document.getElementById('cluster-editor-name'),
+  clusterEditorColor: document.getElementById('cluster-editor-color'),
   clusterEditorDescription: document.getElementById('cluster-editor-description'),
   thresholdOverlay: document.getElementById('cluster-threshold-overlay'),
   thresholdTitle: document.getElementById('cluster-threshold-title'),
@@ -75,11 +80,23 @@ let pendingPromptCluster = null;
 let contextBookmarkId = null;
 const searchTimers = {};
 const composeSelections = {};
+localStorage.removeItem('butter-mail-categories');
 let storedEmails = getJson(STORAGE_KEY, []);
 let storedEmbeddings = getJson(EMBEDDINGS_KEY, {});
-let storedCategories = getJson(CATEGORIES_KEY, { assignments: {}, meta: {} });
 let storedPromptClusters = getJson(PROMPT_CLUSTERS_KEY, {});
 let storedBookmarkOverrides = getJson(BOOKMARK_OVERRIDES_KEY, {});
+
+(function backfillPromptClusterColors() {
+  const slugs = Object.keys(storedPromptClusters);
+  let dirty = false;
+  slugs.forEach((slug, idx) => {
+    if (!storedPromptClusters[slug].color) {
+      storedPromptClusters[slug].color = nextClusterColor(idx);
+      dirty = true;
+    }
+  });
+  if (dirty) saveJson(PROMPT_CLUSTERS_KEY, storedPromptClusters);
+})();
 let allEmailsCache = null;
 let allEmailsByIdCache = null;
 let bookmarkDefinitionsCache = null;
@@ -131,12 +148,6 @@ function getEmbeddings() { return storedEmbeddings; }
 function saveEmbeddings(embeddings) {
   storedEmbeddings = embeddings || {};
   saveJson(EMBEDDINGS_KEY, storedEmbeddings);
-}
-function getCategories() { return storedCategories; }
-function saveCategories(cats) {
-  storedCategories = cats || { assignments: {}, meta: {} };
-  saveJson(CATEGORIES_KEY, storedCategories);
-  invalidateBookmarkDefinitions();
 }
 function getPcaModel() { return getJson(PCA_KEY, null); }
 function savePcaModel(model) { if (model) saveJson(PCA_KEY, model); else localStorage.removeItem(PCA_KEY); }
@@ -511,18 +522,6 @@ function sortedPromptClusters() {
   });
 }
 
-function sortedAutoCategories() {
-  const cats = getCategories();
-  return Object.keys(cats.meta || {}).filter((key) => key !== 'noise').sort((left, right) => {
-    const metaA = cats.meta[left] || {};
-    const metaB = cats.meta[right] || {};
-    const orderA = typeof metaA.order === 'number' ? metaA.order : Number.MAX_SAFE_INTEGER;
-    const orderB = typeof metaB.order === 'number' ? metaB.order : Number.MAX_SAFE_INTEGER;
-    if (orderA !== orderB) return orderA - orderB;
-    return String(metaA.name || left).localeCompare(String(metaB.name || right));
-  });
-}
-
 function getPromptClusterMemberIds(cluster) {
   const ids = new Set(Array.isArray(cluster.emailIds) ? cluster.emailIds : []);
   if (Array.isArray(cluster.scored)) {
@@ -539,9 +538,6 @@ function getPromptClusterMemberIds(cluster) {
 function emailMatchesBookmark(email, bookmarkId, promptMemberIds) {
   const override = getBookmarkOverrides()[email.id];
   if (override) return override === bookmarkId;
-  if (bookmarkId.startsWith('auto:')) {
-    return getCategories().assignments[email.id] === bookmarkId.slice(5);
-  }
   if (bookmarkId.startsWith('prompt:')) {
     const cluster = getPromptClusters()[bookmarkId.slice(7)];
     if (!cluster) return false;
@@ -558,7 +554,6 @@ function countEmailsForBookmark(bookmarkId, promptMemberIds) {
 function getBookmarkDefinitions() {
   if (bookmarkDefinitionsCache) return bookmarkDefinitionsCache;
   const bookmarks = [];
-  const cats = getCategories();
   sortedPromptClusters().forEach(([slug, cluster]) => {
     const memberIds = getPromptClusterMemberIds(cluster);
     bookmarks.push({
@@ -566,19 +561,9 @@ function getBookmarkDefinitions() {
       slug,
       label: cluster.label || slug,
       description: cluster.description || '',
+      color: cluster.color || '#7c83ff',
       kind: 'user',
       count: countEmailsForBookmark('prompt:' + slug, memberIds)
-    });
-  });
-  sortedAutoCategories().forEach((catId) => {
-    const meta = cats.meta[catId] || {};
-    bookmarks.push({
-      id: 'auto:' + catId,
-      slug: catId,
-      label: meta.name || catId,
-      description: meta.description || '',
-      kind: 'auto',
-      count: countEmailsForBookmark('auto:' + catId)
     });
   });
   bookmarkDefinitionsCache = bookmarks;
@@ -596,7 +581,7 @@ function openBookmarkTab(bookmarkId) {
     sourceType: 'bookmark',
     bookmarkId,
     title: bookmark.label,
-    iconName: bookmark.kind === 'auto' ? 'sparkles' : 'bookmark'
+    iconName: 'bookmark'
   }), 'bookmark:' + bookmarkId);
 }
 
@@ -698,10 +683,10 @@ function renderBookmarkBar() {
   const active = getActiveTab();
   const currentBookmarkId = active && active.type === 'clusterList' && active.sourceType === 'bookmark' ? active.bookmarkId : '';
   dom.bookmarkBar.innerHTML = getBookmarkDefinitions().map((bookmark) => {
-    const tooltip = (bookmark.kind === 'auto' ? 'Auto-created cluster' : 'User-created cluster') + (bookmark.description ? '\n' + bookmark.description : '');
+    const tooltip = 'Smart cluster' + (bookmark.description ? '\n' + bookmark.description : '');
     const activeClass = bookmark.id === currentBookmarkId ? ' active' : '';
     return '<button type="button" class="bookmark-pill' + activeClass + '" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '" data-tooltip="' + escapeHtml(tooltip) + '">' +
-      '<span class="glyph">' + (bookmark.kind === 'auto' ? '+' : '*') + '</span>' +
+      '<span class="bookmark-swatch" style="background:' + escapeHtml(bookmark.color || '#7c83ff') + '"></span>' +
       '<span>' + escapeHtml(bookmark.label.toLowerCase()) + '</span>' +
       '<span class="bookmark-count" style="color:var(--fg-mute);font-size:11px;">(' + String(bookmark.count) + ')</span>' +
     '</button>';
@@ -709,12 +694,13 @@ function renderBookmarkBar() {
 }
 
 function renderBookmarkCard(bookmark) {
-  return '<button type="button" class="bookmark-card" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '" data-tooltip="' + escapeHtml((bookmark.kind === 'auto' ? 'auto-created cluster' : 'user-created cluster') + (bookmark.description ? '\n' + bookmark.description : '')) + '">' +
+  const color = bookmark.color || '#7c83ff';
+  return '<button type="button" class="bookmark-card" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '" data-tooltip="' + escapeHtml('smart cluster' + (bookmark.description ? '\n' + bookmark.description : '')) + '">' +
     '<div class="bookmark-card-header">' +
-      '<h3 class="bookmark-card-name">' + (bookmark.kind === 'auto' ? '+ ' : '* ') + escapeHtml(bookmark.label.toLowerCase()) + '</h3>' +
+      '<h3 class="bookmark-card-name"><span class="bookmark-swatch" style="background:' + escapeHtml(color) + '"></span>' + escapeHtml(bookmark.label.toLowerCase()) + '</h3>' +
       '<span class="bookmark-card-count">' + String(bookmark.count) + '</span>' +
     '</div>' +
-    '<p class="bookmark-card-description">' + escapeHtml(bookmark.description || (bookmark.kind === 'auto' ? 'auto-created from clustering.' : 'user-created cluster.')) + '</p>' +
+    '<p class="bookmark-card-description">' + escapeHtml(bookmark.description || 'smart cluster.') + '</p>' +
   '</button>';
 }
 
@@ -770,7 +756,6 @@ function renderHomeView(tab) {
     cmd('open-mailbox-tab', ' data-system-id="mailbox:Trash" data-label="Trash" data-icon="trash"', 'trash', 'view trash') +
     cmd('refresh-imap', '', 'refresh', 'pull latest from imap') +
     cmd('compute-embeddings', '', 'embed', 'compute embeddings for all cached mail') +
-    cmd('recluster', '', 'recluster', 're-run clustering on existing embeddings') +
     cmd('focus-smart-cluster', '', 'smart', 'create a smart cluster from a prompt') +
     cmd('open-settings', '', 'settings', 'configure imap host / credentials');
 
@@ -778,7 +763,7 @@ function renderHomeView(tab) {
     ? '<div class="home-cluster-line">' +
       bookmarks.slice(0, 24).map((bookmark) =>
         '<button type="button" class="home-cluster-chip" data-action="open-bookmark-tab" data-bookmark-id="' + escapeHtml(bookmark.id) + '">' +
-          (bookmark.kind === 'auto' ? '+ ' : '* ') +
+          '<span class="bookmark-swatch" style="background:' + escapeHtml(bookmark.color || '#7c83ff') + '"></span>' +
           escapeHtml(bookmark.label.toLowerCase()) +
           ' <span class="home-cluster-count">(' + String(bookmark.count) + ')</span>' +
         '</button>'
@@ -888,7 +873,7 @@ function renderClusterListView(tab) {
   const emails = getEmailsForTab(tab);
   const bookmark = tab.sourceType === 'bookmark' ? getBookmarkById(tab.bookmarkId) : null;
   const title = bookmark ? bookmark.label : tab.title;
-  const subtitle = bookmark ? ((bookmark.description || (bookmark.kind === 'auto' ? 'auto-cluster.' : 'user cluster.')) + ' ' + String(emails.length) + ' msg(s).') : String(emails.length) + ' msg(s).';
+  const subtitle = bookmark ? ((bookmark.description || 'smart cluster.') + ' ' + String(emails.length) + ' msg(s).') : String(emails.length) + ' msg(s).';
   const canLoadMore = window.electronAPI && tab.systemId === 'mailbox:INBOX';
   const renderedCount = tab.viewMode === 'graph' ? emails.length : getRenderedEmailCount(tab, emails.length);
   return '<section class="tab-view cluster-view">' +
@@ -984,6 +969,24 @@ function renderComposeView(tab) {
   '</section>';
 }
 
+function getClusterColorsForEmail(emailId) {
+  const overrides = getBookmarkOverrides();
+  const override = overrides[emailId];
+  if (override) {
+    if (override.startsWith('prompt:')) {
+      const cluster = getPromptClusters()[override.slice(7)];
+      return cluster && cluster.color ? [cluster.color] : [];
+    }
+    return [];
+  }
+  const colors = [];
+  sortedPromptClusters().forEach(([, cluster]) => {
+    const ids = getPromptClusterMemberIds(cluster);
+    if (ids.has(emailId) && cluster.color) colors.push(cluster.color);
+  });
+  return colors;
+}
+
 function renderGraphForTab(tab) {
   const container = document.getElementById('graph-container');
   if (!container || !window.GraphView) return;
@@ -994,7 +997,7 @@ function renderGraphForTab(tab) {
   emails.forEach((email) => {
     if (embeddings[email.id] && pcaPoints[email.id]) {
       points[email.id] = pcaPoints[email.id];
-      emailsById[email.id] = { ...email, categoryId: getCategories().assignments[email.id] || null };
+      emailsById[email.id] = { ...email, clusterColors: getClusterColorsForEmail(email.id) };
     }
   });
   if (!Object.keys(points).length) return;
@@ -1005,10 +1008,6 @@ function renderGraphForTab(tab) {
   }
   window.GraphView.render(points, emailsById);
 }
-
-window.getCategoryColor = function (catId) {
-  return (getCategories().meta[catId] || {}).color || '#7c83ff';
-};
 
 window.onGraphPointClick = function (emailId) {
   openEmailTab(emailId);
@@ -1038,35 +1037,6 @@ async function ensureThreadHeaders() {
   } catch (err) {
     console.warn('[butter-mail] thread headers failed', err);
   }
-}
-
-function buildThreadRepsForClustering(allEmails, embeddings) {
-  const emails = allEmails.filter((email) => embeddings[email.id]);
-  if (!emails.length) return { repIds: [], repToMembers: {} };
-  const threads = window.ThreadView && typeof window.ThreadView.buildThreads === 'function' ? window.ThreadView.buildThreads(emails) : emails.map((email) => [email]);
-  const repIds = [];
-  const repToMembers = {};
-  threads.forEach((thread) => {
-    if (!thread || !thread.length) return;
-    const members = thread.filter((email) => embeddings[email.id]);
-    if (!members.length) return;
-    const rep = members[members.length - 1];
-    repIds.push(rep.id);
-    repToMembers[rep.id] = members.map((email) => email.id);
-  });
-  return { repIds, repToMembers };
-}
-
-function expandClusterAssignmentsToThreads(clusterRes, repToMembers, embeddings) {
-  const assignments = {};
-  const meta = { ...(clusterRes.meta || {}) };
-  Object.keys(repToMembers).forEach((repId) => {
-    const catId = (clusterRes.assignments || {})[repId] || 'noise';
-    repToMembers[repId].forEach((emailId) => { assignments[emailId] = catId; });
-  });
-  Object.keys(embeddings || {}).forEach((emailId) => { if (!assignments[emailId]) assignments[emailId] = 'noise'; });
-  if (!meta.noise) meta.noise = { name: 'Uncategorized', color: '#909090' };
-  return { assignments, meta };
 }
 
 async function ensureEmailBodyLoaded(emailId) {
@@ -1171,38 +1141,7 @@ async function computeEmbeddings() {
     savePcaPoints(pcaPoints);
     savePcaModel(pcaResult.model || null);
   }
-  await ensureThreadHeaders();
-  const threadData = buildThreadRepsForClustering(getAllEmails(), embeddingResult.embeddings || {});
-  const clusterResult = await window.electronAPI.embeddings.cluster(embeddingResult.embeddings || {}, threadData.repIds);
-  if (!clusterResult.ok) {
-    alert('Clustering failed: ' + (clusterResult.error || 'Unknown error'));
-    return;
-  }
-  saveCategories(expandClusterAssignmentsToThreads(clusterResult, threadData.repToMembers, embeddingResult.embeddings || {}));
-  setStatus('Embeddings and clusters updated.', 'success');
-  renderApp();
-}
-
-async function recluster() {
-  if (typeof window.electronAPI === 'undefined') {
-    alert('Re-cluster requires the Electron app.');
-    return;
-  }
-  const embeddings = getEmbeddings();
-  if (!Object.keys(embeddings).length) {
-    alert('Compute embeddings first.');
-    return;
-  }
-  setStatus('Re-clustering…', 'muted');
-  await ensureThreadHeaders();
-  const threadData = buildThreadRepsForClustering(getAllEmails(), embeddings);
-  const clusterResult = await window.electronAPI.embeddings.cluster(embeddings, threadData.repIds);
-  if (!clusterResult.ok) {
-    alert('Re-cluster failed: ' + (clusterResult.error || 'Unknown error'));
-    return;
-  }
-  saveCategories(expandClusterAssignmentsToThreads(clusterResult, threadData.repToMembers, embeddings));
-  setStatus('Clusters refreshed.', 'success');
+  setStatus('Embeddings updated.', 'success');
   renderApp();
 }
 
@@ -1271,6 +1210,7 @@ function commitThresholdCluster() {
   clusters[slug] = {
     label: pendingPromptCluster.prompt,
     description: '',
+    color: nextClusterColor(Object.keys(clusters).length),
     threshold: parseFloat(dom.thresholdSlider.value || '0.3'),
     scored: pendingPromptCluster.scored || [],
     overrides: pendingPromptCluster.overrides || {},
@@ -1522,26 +1462,20 @@ function openClusterEditor(bookmarkId, focusMode) {
   contextBookmarkId = bookmarkId || '';
   if (!bookmarkId) {
     dom.clusterEditorTitle.textContent = 'Create cluster';
-    dom.clusterEditorCopy.textContent = 'Create a user-managed bookmark for email triage.';
+    dom.clusterEditorCopy.textContent = 'Create a smart cluster for email triage.';
     dom.clusterEditorBookmarkId.value = '';
     dom.clusterEditorName.value = '';
     dom.clusterEditorDescription.value = '';
+    if (dom.clusterEditorColor) dom.clusterEditorColor.value = nextClusterColor(Object.keys(getPromptClusters()).length);
   } else if (bookmarkId.startsWith('prompt:')) {
     const cluster = getPromptClusters()[bookmarkId.slice(7)];
     if (!cluster) return;
     dom.clusterEditorTitle.textContent = 'Edit cluster';
-    dom.clusterEditorCopy.textContent = 'Rename this cluster or update its tooltip description.';
+    dom.clusterEditorCopy.textContent = 'Rename this cluster, change its color, or update the description.';
     dom.clusterEditorBookmarkId.value = bookmarkId;
     dom.clusterEditorName.value = cluster.label || bookmarkId.slice(7);
     dom.clusterEditorDescription.value = cluster.description || '';
-  } else if (bookmarkId.startsWith('auto:')) {
-    const meta = (getCategories().meta || {})[bookmarkId.slice(5)];
-    if (!meta) return;
-    dom.clusterEditorTitle.textContent = 'Edit auto cluster';
-    dom.clusterEditorCopy.textContent = 'Rename the clustered bookmark or add a description.';
-    dom.clusterEditorBookmarkId.value = bookmarkId;
-    dom.clusterEditorName.value = meta.name || bookmarkId.slice(5);
-    dom.clusterEditorDescription.value = meta.description || '';
+    if (dom.clusterEditorColor) dom.clusterEditorColor.value = cluster.color || nextClusterColor(0);
   }
   dom.clusterEditorOverlay.classList.remove('hidden');
   setTimeout(() => (focusMode === 'description' ? dom.clusterEditorDescription : dom.clusterEditorName).focus(), 0);
@@ -1551,11 +1485,20 @@ function saveClusterEditorForm() {
   const bookmarkId = dom.clusterEditorBookmarkId.value;
   const name = dom.clusterEditorName.value.trim();
   const description = dom.clusterEditorDescription.value.trim();
+  const color = dom.clusterEditorColor ? dom.clusterEditorColor.value : '';
   if (!name) return;
   if (!bookmarkId) {
     const clusters = getPromptClusters();
     const slug = createClusterSlug(name, clusters);
-    clusters[slug] = { label: name, description, emailIds: [], overrides: {}, createdAt: new Date().toISOString(), order: Object.keys(clusters).length };
+    clusters[slug] = {
+      label: name,
+      description,
+      color: color || nextClusterColor(Object.keys(clusters).length),
+      emailIds: [],
+      overrides: {},
+      createdAt: new Date().toISOString(),
+      order: Object.keys(clusters).length
+    };
     savePromptClusters(clusters);
     dom.clusterEditorOverlay.classList.add('hidden');
     renderApp();
@@ -1568,14 +1511,8 @@ function saveClusterEditorForm() {
     if (!clusters[slug]) return;
     clusters[slug].label = name;
     clusters[slug].description = description;
+    if (color) clusters[slug].color = color;
     savePromptClusters(clusters);
-  } else if (bookmarkId.startsWith('auto:')) {
-    const cats = getCategories();
-    const catId = bookmarkId.slice(5);
-    if (!cats.meta[catId]) return;
-    cats.meta[catId].name = name;
-    cats.meta[catId].description = description;
-    saveCategories(cats);
   }
   dom.clusterEditorOverlay.classList.add('hidden');
   renderApp();
@@ -1587,12 +1524,6 @@ function deleteBookmark(bookmarkId) {
     const clusters = getPromptClusters();
     delete clusters[bookmarkId.slice(7)];
     savePromptClusters(clusters);
-  } else if (bookmarkId.startsWith('auto:')) {
-    const cats = getCategories();
-    const catId = bookmarkId.slice(5);
-    delete cats.meta[catId];
-    Object.keys(cats.assignments || {}).forEach((emailId) => { if (cats.assignments[emailId] === catId) delete cats.assignments[emailId]; });
-    saveCategories(cats);
   }
   const overrides = getBookmarkOverrides();
   Object.keys(overrides).forEach((emailId) => { if (overrides[emailId] === bookmarkId) delete overrides[emailId]; });
@@ -1717,7 +1648,6 @@ function handleDocumentClick(event) {
   else if (action === 'refresh-imap') refreshFromImap();
   else if (action === 'load-more') loadMoreImapEmails();
   else if (action === 'compute-embeddings') computeEmbeddings();
-  else if (action === 'recluster') recluster();
   else if (action === 'set-cluster-view') { const tab = appState.tabs.find((item) => item.id === actionEl.dataset.tabId && item.type === 'clusterList'); if (tab) { tab.viewMode = actionEl.dataset.viewMode; renderActiveView(); } }
   else if (action === 'open-email-tab') openEmailTab(actionEl.dataset.emailId || actionEl.closest('[data-email-id]')?.dataset.emailId);
   else if (action === 'clear-selection') clearClusterSelection(actionEl.dataset.tabId);
